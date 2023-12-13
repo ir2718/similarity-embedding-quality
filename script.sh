@@ -1,0 +1,14 @@
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 0
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 1
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 2
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 3
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 4
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 5
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 6
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 7
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 8
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 9
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 10
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 11
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 12
+python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 13

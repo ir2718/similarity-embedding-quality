@@ -28,6 +28,7 @@ parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
 parser.add_argument("--test_batch_size", default=64, type=int)
 parser.add_argument("--lr", default=2e-5, type=float)
+parser.add_argument("--weight_decay", default=1e-2, type=float)
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_save_path", default="output", type=str)
@@ -38,6 +39,7 @@ if args.last_k_states != 1 and args.pooling_fn not in ["mean", "weighted_mean"]:
     raise Exception("Using last k hidden states is only permitted with mean and weighted mean pooling.")
 
 #########################################################################################
+# loading data
 
 sts_dataset_path = 'datasets/stsbenchmark.tsv.gz'
 
@@ -84,6 +86,23 @@ validation_loader = DataLoader(validation_dataset, batch_size=args.test_batch_si
 test_loader = DataLoader(test_dataset, batch_size=args.test_batch_size)
 
 #########################################################################################
+# pooling types
+
+class MeanCLSPooling(nn.Module):
+    def __init__(self, last_k_states, starting_state):
+        super().__init__()
+        self.last_k = last_k_states
+        self.starting_state = starting_state
+
+    def forward(self, hidden, attention_mask):
+        last_k_hidden = torch.stack(
+            hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
+        ).mean(dim=0, keepdim=True)[:, :, 0, :]
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_k_hidden.size()).float()
+        emb_sum = torch.sum(last_k_hidden * input_mask_expanded, dim=2)
+        sum_mask = torch.clamp(input_mask_expanded.sum(dim=2), min=1e-9) # denominator
+        emb_mean = emb_sum / sum_mask
+        return emb_mean.squeeze(0)
 
 class MeanPooling(nn.Module):
     def __init__(self, last_k_states, starting_state):
@@ -92,7 +111,9 @@ class MeanPooling(nn.Module):
         self.starting_state = starting_state
 
     def forward(self, hidden, attention_mask):
-        last_k_hidden = torch.stack(hidden.hidden_states[self.starting_state : self.starting_state + self.last_k])
+        last_k_hidden = torch.stack(
+            hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
+        ).mean(dim=0, keepdim=True)
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_k_hidden.size()).float()
         emb_sum = torch.sum(last_k_hidden * input_mask_expanded, dim=2)
         sum_mask = torch.clamp(input_mask_expanded.sum(dim=2), min=1e-9) # denominator
@@ -109,7 +130,9 @@ class WeightedMeanPooling(nn.Module):
 
 
     def forward(self, hidden, attention_mask):
-        last_k_hidden = torch.stack(hidden.hidden_states[self.starting_state : self.starting_state + self.last_k])
+        last_k_hidden = torch.stack(
+            hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
+        ).mean(dim=0, keepdim=True)
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_k_hidden.size()).float()
         emb_sum = torch.sum(last_k_hidden * self.mean_weights * input_mask_expanded, dim=2)
         sum_mask = torch.clamp(input_mask_expanded.sum(dim=2), min=1e-9) # denominator
@@ -130,7 +153,10 @@ class WeightedPerComponentMeanPooling(nn.Module):
         sum_mask = torch.clamp(input_mask_expanded.sum(dim=1), min=1e-9) # denominator
         emb_mean = emb_sum / sum_mask
         return emb_mean
-    
+
+#########################################################################################################
+# model and train loop
+
 class Model(nn.Module):
     def __init__(self, model_name, pooling_fn, last_k_states=1, starting_state=-1):
         super().__init__()
@@ -193,8 +219,12 @@ def batch_to_device(x, device):
 
 #############################################################################################
 
+model_dir = os.path.join(
+    args.model_save_path, 
+    f"{args.model_name.replace('/', '-')}_{args.pooling_fn}_{args.starting_state}_to_{args.starting_state + args.last_k_states}"
+)
 test_cosine_spearman, test_cosine_pearson = [], []
-model_dir = os.path.join(args.model_save_path, f"{args.model_name.replace('/', '-')}_{args.pooling_fn}_{args.starting_state}_to_{args.last_k_states}")
+
 for seed in range(args.num_seeds):
     logging.info("##### Seed {} #####".format(seed))
     random.seed(seed)
@@ -202,13 +232,44 @@ for seed in range(args.num_seeds):
     torch.manual_seed(seed)
     
     model = Model(args.model_name, args.pooling_fn, args.last_k_states, args.starting_state).to(args.device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+    # taken from https://github.com/huggingface/transformers/blob/7c6cd0ac28f1b760ccb4d6e4761f13185d05d90b/src/transformers/trainer_pt_utils.py
+    def get_parameter_names(model, forbidden_layer_types):
+        """
+        Returns the names of the model parameters that are not inside a forbidden layer.
+        """
+        result = []
+        for name, child in model.named_children():
+            result += [
+                f"{name}.{n}"
+                for n in get_parameter_names(child, forbidden_layer_types)
+                if not isinstance(child, tuple(forbidden_layer_types))
+            ]
+        # Add model specific parameters (defined with nn.Parameter) since they are not in any child.
+        result += list(model._parameters.keys())
+        return result
+
+    decay_parameters = get_parameter_names(model, [nn.LayerNorm])
+    decay_parameters = [name for name in decay_parameters if "bias" not in name]
+    optimizer_grouped_parameters = [
+        {
+            "params": [p for n, p in model.named_parameters() if n in decay_parameters],
+            "weight_decay": args.weight_decay,
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if n not in decay_parameters],
+            "weight_decay": 0.0,
+        },
+    ]
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
         num_warmup_steps=int(0.1 * args.num_epochs*len(train_loader)),
         num_training_steps=args.num_epochs*len(train_loader)
     )
     
+    # training setup is same as in sentence transformers library
     for e in range(args.num_epochs):
         best_epoch_idx, best_spearman, best_model = e, None, None
         for s1, s2, score in tqdm(train_loader):
