@@ -22,7 +22,7 @@ from scipy.stats import pearsonr, spearmanr
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
-parser.add_argument("--pooling_fn", default="mean", type=str) # mean, weighted_mean, weighted_per_component_mean
+parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
 parser.add_argument("--last_k_states", default=1, type=int)
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
@@ -88,22 +88,32 @@ test_loader = DataLoader(test_dataset, batch_size=args.test_batch_size)
 #########################################################################################
 # pooling types
 
-class MeanCLSPooling(nn.Module):
+class MaxPooling(nn.Module):
     def __init__(self, last_k_states, starting_state):
         super().__init__()
         self.last_k = last_k_states
         self.starting_state = starting_state
 
     def forward(self, hidden, attention_mask):
-        last_k_hidden = torch.stack(
+        last_k_max = torch.stack(
             hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
-        ).mean(dim=0, keepdim=True)[:, :, 0, :]
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_k_hidden.size()).float()
-        emb_sum = torch.sum(last_k_hidden * input_mask_expanded, dim=2)
-        sum_mask = torch.clamp(input_mask_expanded.sum(dim=2), min=1e-9) # denominator
-        emb_mean = emb_sum / sum_mask
-        return emb_mean.squeeze(0)
+        ).max(dim=2)[0]
+        mean_of_max = last_k_max.mean(dim=0) 
+        return mean_of_max
 
+class CLSPooling(nn.Module):
+    def __init__(self, last_k_states, starting_state):
+        super().__init__()
+        self.last_k = last_k_states
+        self.starting_state = starting_state
+
+    def forward(self, hidden, attention_mask):
+        last_k_cls = torch.stack(
+            hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
+        )[:, :, 0, :]
+        mean_of_cls = last_k_cls.mean(dim=0)
+        return mean_of_cls
+    
 class MeanPooling(nn.Module):
     def __init__(self, last_k_states, starting_state):
         super().__init__()
@@ -121,13 +131,11 @@ class MeanPooling(nn.Module):
         return emb_mean.squeeze(0)
 
 class WeightedMeanPooling(nn.Module):
-    def __init__(self, config, last_k, starting_state):
+    def __init__(self, config, last_k, starting_state, init=None):
         super().__init__()
         self.last_k = last_k
         self.starting_state = starting_state
-        self.mean_weights = torch.nn.Parameter(torch.randn(config.hidden_size, self.last_k))
-        self.mean_weights.requires_grad = True
-
+        self.mean_weights = torch.nn.Parameter(torch.ones(self.last_k, 1, 1, config.hidden_size), requires_grad=True)
 
     def forward(self, hidden, attention_mask):
         last_k_hidden = torch.stack(
@@ -168,6 +176,10 @@ class Model(nn.Module):
         
         if pooling_fn == "mean":
             self.pooling_fn = MeanPooling(last_k_states, starting_state)
+        if pooling_fn == "max":
+            self.pooling_fn = MaxPooling(last_k_states, starting_state)
+        if pooling_fn == "cls":
+            self.pooling_fn = CLSPooling(last_k_states, starting_state)
         elif pooling_fn == "weighted_mean":
             self.pooling_fn = WeightedMeanPooling(self.config, last_k_states, starting_state)
         elif pooling_fn == "weighted_per_component_mean":
