@@ -1,13 +1,3 @@
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 0 --pooling_fn cls 
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 0 --pooling_fn max
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 0 --pooling_fn mean
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name bert-base-cased --starting_state 12 --pooling_fn mean
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-discriminator --starting_state 0 --pooling_fn cls
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-discriminator --starting_state 13 --pooling_fn cls
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-discriminator --starting_state 0 --pooling_fn max
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-discriminator --starting_state 0 --pooling_fn mean
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-discriminator --starting_state 12 --pooling_fn mean
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-generator --starting_state 0 --pooling_fn cls
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-generator --starting_state 1 --pooling_fn cls
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-generator --starting_state 0 --pooling_fn max
-python -m src.scripts.training_stsbenchmark_hf --num_seeds 1 --model_name google/electra-base-generator --starting_state 1 --pooling_fn max
+for ((i=0;i<=13;i++)); do
+    python -m src.scripts.training_stsbenchmark_hf --num_seeds 5 --model_name google/electra-base-discriminator --starting_state $i --pooling_fn max --device cuda:1
+done
