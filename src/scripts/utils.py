@@ -1,7 +1,10 @@
 from sentence_transformers import util
 from torch.utils.data import DataLoader, Dataset
-import torch
+from sklearn.model_selection import train_test_split
+import numpy as np
+import pandas as pd
 import torch.nn as nn
+import torch
 import gzip
 import csv
 import os
@@ -11,12 +14,12 @@ def read_data(path, dataset_f, train_batch_size, test_batch_size, dataset_kwargs
     val_samples = []
     test_samples = []
     with gzip.open(path, 'rt', encoding='utf8') as f_in:
+        mapping = {"contradiction": 0, "entailment": 1, "neutral": 2}
         reader = csv.DictReader(f_in, delimiter='\t', quoting=csv.QUOTE_NONE)
         for row in reader:
 
             if "label" in row.keys():
-                mapping = {"neutral": 0, "entailment": 1, "contradiction": 2}
-                label = mapping[row["score"]]
+                label = mapping[row["label"]]
             else:
                 label = row["score"]
 
@@ -60,6 +63,73 @@ class BaseDataset(Dataset):
     def __len__(self):
         return len(self.s1)
 
+def load_sts_news_sr(train_batch_size, test_batch_size):
+    sts_dataset_path = 'datasets/STS.news.sr'
+    
+    columns = ["sentence1", "sentence2", "score"]
+    colnames = ["score", "a1", "a2", "a3", "a4", "a5", "sentence1", "sentence2"]
+    df = pd.read_csv(os.path.join(sts_dataset_path, "STS.news.sr.txt"), delimiter="\t", quoting=csv.QUOTE_NONE, header=None, names=colnames)[columns]
+
+    train_perc = 0.7
+    val_perc = 0.2
+
+    seed = 42
+    num_bins = 20
+
+    y = df['score'].values
+    bins = np.linspace(0, 5, num_bins)
+    y_binned = np.digitize(y, bins)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        df[['sentence1', 'sentence2']], df[['score']], 
+        test_size=1 - (train_perc + val_perc), 
+        stratify=y_binned,
+        random_state=seed
+    )
+
+    y = y_train['score'].values
+    bins = np.linspace(0, 5, num_bins)
+    y_binned = np.digitize(y, bins)
+
+    X_train, X_validation, y_train, y_validation = train_test_split(
+        X_train[['sentence1', 'sentence2']], y_train[['score']], 
+        test_size=1 - train_perc, 
+        stratify=y_binned,
+        random_state=seed
+    )
+
+    train_new = pd.concat((X_train, y_train), axis=1).values.tolist()
+    validation_new = pd.concat((X_validation, y_validation), axis=1).values.tolist()
+    test_new = pd.concat((X_test, y_test), axis=1).values.tolist()
+
+    train_dataset = BaseDataset(train_new, scale=5.0)
+    val_dataset = BaseDataset(validation_new, scale=5.0)
+    test_dataset = BaseDataset(test_new, scale=5.0)
+
+    train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=test_batch_size)
+    test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
+    return train_loader, val_loader, test_loader
+
+
+def load_kor_sts(train_batch_size, test_batch_size):
+    sts_dataset_path = 'datasets/kor-nlu-datasets/KorSTS/'
+    
+    columns = ["sentence1", "sentence2", "score"]
+
+    train = pd.read_csv(os.path.join(sts_dataset_path, "sts-train.tsv"), delimiter="\t", quoting=csv.QUOTE_NONE)[columns].values.tolist()
+    val = pd.read_csv(os.path.join(sts_dataset_path, "sts-dev.tsv"), delimiter="\t", quoting=csv.QUOTE_NONE)[columns].values.tolist()
+    test = pd.read_csv(os.path.join(sts_dataset_path, "sts-test.tsv"), delimiter="\t", quoting=csv.QUOTE_NONE)[columns].values.tolist()
+
+    train_dataset = BaseDataset(train, scale=5.0)
+    val_dataset = BaseDataset(val, scale=5.0)
+    test_dataset = BaseDataset(test, scale=5.0)
+
+    train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=test_batch_size)
+    test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
+    return train_loader, val_loader, test_loader
+
 def load_stsb(train_batch_size, test_batch_size):
     sts_dataset_path = 'datasets/stsbenchmark.tsv.gz'
 
@@ -69,15 +139,12 @@ def load_stsb(train_batch_size, test_batch_size):
     return read_data(sts_dataset_path, BaseDataset, train_batch_size, test_batch_size, dataset_kwargs={"scale": 5.0})
 
 def load_nli(train_batch_size, test_batch_size):
-    nli_dataset_path = 'data/AllNLI.tsv.gz'
+    nli_dataset_path = 'datasets/AllNLI.tsv.gz'
 
     if not os.path.exists(nli_dataset_path):
         util.http_get('https://sbert.net/datasets/AllNLI.tsv.gz', nli_dataset_path)
 
     return read_data(nli_dataset_path, BaseDataset, train_batch_size, test_batch_size)
-
-    # Our training loss
-    train_loss = losses.MultipleNegativesRankingLoss(model)
 
 def batch_to_device(x, device):
     return {k:v.to(device) for k, v in x.items()}

@@ -5,6 +5,24 @@ from src.scripts.utils import batch_to_device
 from tqdm import tqdm
 from scipy.stats import pearsonr, spearmanr
 
+class CosineSimilarity(nn.Module):
+
+    def forward(self, out1, out2):
+        out_1_norm = F.normalize(out1, p=2.0, dim=1)
+        out_2_norm = F.normalize(out2, p=2.0, dim=1)
+        return (out_1_norm * out_2_norm).sum(dim=1)
+
+class DifferenceConcatenation(nn.Module):
+
+    def __init__(self, hidden_size):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.linear = nn.Linear(hidden_size * 3, 3, bias=True)
+
+    def forward(self, out1, out2):
+        concatenation = torch.cat((out1, out2, torch.abs(out1 - out2)), dim=1)
+        return self.linear(concatenation)
+
 class Model(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -27,18 +45,21 @@ class Model(nn.Module):
         elif args.pooling_fn == "weighted_per_component_mean":
             self.pooling_fn = WeightedPerComponentMeanPooling(self.config, self.tokenizer)
 
+        if args.dataset == "nli":
+            self.final_layer = DifferenceConcatenation(self.config.hidden_size)
+        elif args.dataset in ["stsb", "kor_sts", "serbian_sts"]:
+            self.final_layer = CosineSimilarity()
+
     def forward_once(self, inputs):
         out = self.model(**inputs, output_hidden_states=True)
         out_mean = self.pooling_fn(out, inputs["attention_mask"])
-        out_emb_norm = F.normalize(out_mean, p=2.0, dim=1)
-        return out_emb_norm
+        return out_mean
 
     def forward(self, s1, s2):
         out1 = self.forward_once(s1)
         out2 = self.forward_once(s2)
+        return self.final_layer(out1, out2)
 
-        return (out1 * out2).sum(dim=1)
-    
     @torch.no_grad()
     def encode(self, s1):
         return self.forward_once(s1)

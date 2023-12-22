@@ -24,8 +24,7 @@ parser.add_argument("--test_batch_size", default=64, type=int)
 parser.add_argument("--lr", default=2e-5, type=float)
 parser.add_argument("--weight_decay", default=1e-2, type=float)
 parser.add_argument("--unsupervised", action="store_true")
-parser.add_argument("--dataset", type=str, default="stsb") # stsb, nli
-parser.add_argument("--loss", type=str, default="mse") # mse, ce
+parser.add_argument("--dataset", type=str, default="stsb") # stsb, kor_sts, serbian_sts
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_save_path", default="output", type=str)
@@ -37,6 +36,10 @@ if args.last_k_states != 1 and args.pooling_fn not in ["mean", "weighted_mean", 
 
 if args.dataset == "stsb":
     loader_f = load_stsb
+elif args.dataset == "kor_sts":
+    loader_f = load_kor_sts
+elif args.dataset == "serbian_sts":
+    loader_f = load_sts_news_sr
 elif args.dataset == "nli":
     loader_f = load_nli
 
@@ -50,9 +53,9 @@ model_dir = os.path.join(
 )
 os.makedirs(model_dir, exist_ok=True)
 
-if args.loss == "mse":
+if args.dataset in ["stsb", "kor_sts", "serbian_sts"]:
     loss_f = nn.MSELoss() 
-elif args.loss == "ce":
+elif args.dataset == "nli":
     loss_f = nn.CrossEntropyLoss()
 
 test_cosine_spearman, test_cosine_pearson = [], []
@@ -116,7 +119,7 @@ if not args.unsupervised:
         print(f" Pearson - {test_pearson}\n")
 
 else:
-    model = Model(args.model_name, args.pooling_fn, args.last_k_states, args.starting_state).to(args.device)
+    model = Model(args).to(args.device)
 
     test_pearson, test_spearman = model.validate(test_loader, args.device)
     test_cosine_pearson.append(test_pearson)
@@ -132,7 +135,7 @@ stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
 mean_cosine_pearson_test = np.mean(test_cosine_pearson)
 stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 
-json_res_path = os.path.join(model_dir, "test_results" + ("_nli" if args.dataset == "nli" else "") + ("_unsupervised" if args.unsupervised else "") + ".json")
+json_res_path = os.path.join(model_dir, "test_results" + (args.dataset if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + ".json")
 
 with open(json_res_path, "w") as f:
     json.dump({
