@@ -34,6 +34,10 @@ class Model(nn.Module):
         
         if args.pooling_fn == "mean":
             self.pooling_fn = MeanPooling(args.last_k_states, args.starting_state)
+        if args.pooling_fn == "norm_mean":
+            self.pooling_fn = NormMeanPooling(args.last_k_states, args.starting_state)
+        elif args.pooling_fn == "mean_self_attention":
+            self.pooling_fn = MeanSelfAttentionPooling(self.config, args.starting_state)
         elif args.pooling_fn == "mean_encoder":
             self.pooling_fn = MeanEncoderPooling(self.config, args.starting_state)
         elif args.pooling_fn == "max":

@@ -135,7 +135,7 @@ stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
 mean_cosine_pearson_test = np.mean(test_cosine_pearson)
 stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 
-json_res_path = os.path.join(model_dir, "test_results" + (args.dataset if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + ".json")
+json_res_path = os.path.join(model_dir, "test_results" + (f"_args.dataset" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + ".json")
 
 with open(json_res_path, "w") as f:
     json.dump({

@@ -3,8 +3,23 @@ from torch.nn import MultiheadAttention
 import torch.nn.functional as F
 import torch
 
+class MeanSelfAttentionPooling(nn.Module):
+    def __init__(self, config, starting_state):
+        super().__init__()
+        self.starting_state = starting_state
+
+    def forward(self, hidden, attention_mask):
+        hidden_states = torch.stack(hidden.hidden_states).permute(1,0,2,3)
+        input_mask_expanded = attention_mask.unsqueeze(-1).unsqueeze(-1).permute(0,2,1,3).expand(hidden_states.size()).float()
+        emb_sum = torch.sum(hidden_states * input_mask_expanded, dim=-2)
+        sum_mask = torch.clamp(input_mask_expanded.sum(dim=-2), min=1e-9)
+        mean = emb_sum / sum_mask
+
+        res = F.softmax(mean.matmul(mean.transpose(1, 2)), dim=2).matmul(mean)
+        return res[:, self.starting_state]
+
 class MeanEncoderPooling(nn.Module):
-    """Does attention pooling over hidden states aggregated using mean."""
+    """Adds an encoder over the hidden states."""
     def __init__(self, config, starting_state):
         super().__init__()
         self.starting_state = starting_state
@@ -91,6 +106,22 @@ class MeanPooling(nn.Module):
         emb_mean = emb_sum / sum_mask
         return emb_mean.squeeze(0)
 
+class NormMeanPooling(nn.Module):
+    def __init__(self, last_k_states, starting_state):
+        super().__init__()
+        self.last_k = last_k_states
+        self.starting_state = starting_state
+
+    def forward(self, hidden, attention_mask):
+        last_k_hidden = torch.stack(
+            hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
+        ).mean(dim=0, keepdim=True)
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_k_hidden.size()).float()
+        emb_sum = torch.sum(F.normalize(last_k_hidden * input_mask_expanded, p=2, dim=-1), dim=2)
+        sum_mask = torch.clamp(input_mask_expanded.sum(dim=2), min=1e-9) # denominator
+        emb_mean = emb_sum / sum_mask
+        return emb_mean.squeeze(0)
+    
 class WeightedMeanPooling(nn.Module):
     def __init__(self, config, last_k, starting_state, init=None):
         super().__init__()
