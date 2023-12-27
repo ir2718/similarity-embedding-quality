@@ -17,12 +17,14 @@ from src.scripts.pooling_functions import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
+parser.add_argument("--combined", action="store_true") # makes sense only for electra
 parser.add_argument("--last_k_states", default=1, type=int)
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
 parser.add_argument("--test_batch_size", default=64, type=int)
 parser.add_argument("--lr", default=2e-5, type=float)
 parser.add_argument("--weight_decay", default=1e-2, type=float)
+parser.add_argument("--max_grad_norm", default=1.0, type=float)
 parser.add_argument("--unsupervised", action="store_true")
 parser.add_argument("--dataset", type=str, default="stsb") # stsb, kor_sts, serbian_sts
 parser.add_argument("--num_epochs", default=10, type=int)
@@ -33,6 +35,9 @@ args = parser.parse_args()
 
 if args.last_k_states != 1 and args.pooling_fn not in ["mean", "weighted_mean", "cls", "max"]:
     raise Exception("Using last k hidden states is permitted with mean, weighted mean, cls and max pooling.")
+
+if args.combined and not "discriminator" in args.model_name:
+    raise Exception("The combined keyword can be used only with Electra models.")
 
 if args.dataset == "stsb":
     loader_f = load_stsb
@@ -68,6 +73,12 @@ if not args.unsupervised:
         
         model = Model(args).to(args.device)
 
+        # if args.combined:
+        #     other_model_name = args.model_name.replace("discriminator", "generator")
+        #     other_args = deepcopy(args)
+        #     other_args.model_name = other_model_name
+        #     model = Model(other_args).to(args.device)
+
         optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
         optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
         scheduler = get_linear_schedule_with_warmup(
@@ -91,6 +102,7 @@ if not args.unsupervised:
                 
                 loss = loss_f(out, score)
                 loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                 optimizer.step()
                 scheduler.step()
