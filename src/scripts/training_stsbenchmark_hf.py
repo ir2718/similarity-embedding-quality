@@ -43,8 +43,10 @@ if args.dataset == "stsb":
     loader_f = load_stsb
 elif args.dataset == "kor_sts":
     loader_f = load_kor_sts
-elif args.dataset == "serbian_sts":
-    loader_f = load_sts_news_sr
+elif args.dataset == "spanish_sts":
+    loader_f = load_spanish_sts
+elif args.dataset == "german_sts":
+    loader_f = load_german_sts
 elif args.dataset == "nli":
     loader_f = load_nli
 
@@ -58,7 +60,7 @@ model_dir = os.path.join(
 )
 os.makedirs(model_dir, exist_ok=True)
 
-if args.dataset in ["stsb", "kor_sts", "serbian_sts"]:
+if "sts" in args.dataset:
     loss_f = nn.MSELoss() 
 elif args.dataset == "nli":
     loss_f = nn.CrossEntropyLoss()
@@ -147,7 +149,7 @@ stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
 mean_cosine_pearson_test = np.mean(test_cosine_pearson)
 stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 
-json_res_path = os.path.join(model_dir, "test_results" + (f"_args.dataset" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + ".json")
+json_res_path = os.path.join(model_dir, "test_results" + (f"_{args.dataset}" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + ".json")
 
 with open(json_res_path, "w") as f:
     json.dump({

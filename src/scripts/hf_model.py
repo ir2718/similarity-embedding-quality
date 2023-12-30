@@ -51,7 +51,7 @@ class Model(nn.Module):
 
         if args.dataset == "nli":
             self.final_layer = DifferenceConcatenation(self.config.hidden_size)
-        elif args.dataset in ["stsb", "kor_sts", "serbian_sts"]:
+        elif "sts" in args.dataset:
             self.final_layer = CosineSimilarity()
 
     def forward_once(self, inputs):
