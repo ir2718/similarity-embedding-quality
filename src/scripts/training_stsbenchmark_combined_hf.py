@@ -10,12 +10,14 @@ import json
 import argparse
 from tqdm import tqdm
 from copy import deepcopy
-from src.scripts.hf_model import Model
+from src.scripts.hf_double_model import DoubleModel
 from src.scripts.utils import *
 from src.scripts.pooling_functions import *
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
+parser.add_argument("--model_name_disc", default="google/electra-base-discriminator", type=str)
+parser.add_argument("--model_name_gen", default="google/electra-base-generator", type=str)
+parser.add_argument("--combination", default="concat", type=str) # concat, mean
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
 parser.add_argument("--last_k_states", default=1, type=int)
 parser.add_argument("--starting_state", default=12, type=int)
@@ -32,8 +34,8 @@ parser.add_argument("--model_save_path", default="output", type=str)
 parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
-if args.last_k_states != 1 and args.pooling_fn not in ["mean", "weighted_mean", "cls", "max"]:
-    raise Exception("Using last k hidden states is permitted with mean, weighted mean, cls and max pooling.")
+if args.pooling_fn not in ["mean", "norm_mean", "cls", "max", "mean_self_attention"]:
+    raise Exception(f"This script cannot be used with {args.pooling_fn}. Use one of these: 'mean', 'norm_mean', 'cls', 'max', 'mean_self_attention'")
 
 if args.dataset == "stsb":
     loader_f = load_stsb
@@ -43,23 +45,18 @@ elif args.dataset == "spanish_sts":
     loader_f = load_spanish_sts
 elif args.dataset == "german_sts":
     loader_f = load_german_sts
-elif args.dataset == "nli":
-    loader_f = load_nli
 
 train_loader, validation_loader, test_loader = loader_f(args.train_batch_size, args.test_batch_size)
 
 model_dir = os.path.join(
     args.model_save_path, 
-    args.model_name.replace('/', '-'),
+    args.model_name_disc.replace('/', '-') + "-" + args.model_name_gen.replace('/', '-'),
     args.pooling_fn,
     f"{args.starting_state}_to_{args.starting_state + args.last_k_states}"
 )
 os.makedirs(model_dir, exist_ok=True)
 
-if "sts" in args.dataset:
-    loss_f = nn.MSELoss() 
-elif args.dataset == "nli":
-    loss_f = nn.CrossEntropyLoss()
+loss_f = nn.MSELoss() 
 
 test_cosine_spearman, test_cosine_pearson = [], []
 if not args.unsupervised:
@@ -69,16 +66,15 @@ if not args.unsupervised:
         np.random.seed(seed)
         torch.manual_seed(seed)
         
-        model = Model(args).to(args.device)
-
-        optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
-        optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
+        model = DoubleModel(args).to(args.device)
+        optimizer_grouped_params = remove_params_from_optimizer(model, args.weight_decay)
+        optimizer = torch.optim.AdamW(optimizer_grouped_params, lr=args.lr)
         scheduler = get_linear_schedule_with_warmup(
             optimizer,
             num_warmup_steps=int(0.1 * args.num_epochs*len(train_loader)),
             num_training_steps=args.num_epochs*len(train_loader)
         )
-        
+
         # training setup is same as in sentence transformers library
         for e in range(args.num_epochs):
             best_epoch_idx, best_spearman, best_model = e, None, None
@@ -123,7 +119,7 @@ if not args.unsupervised:
         print(f" Pearson - {test_pearson}\n")
 
 else:
-    model = Model(args).to(args.device)
+    model = DoubleModel(args).to(args.device)
 
     test_pearson, test_spearman = model.validate(test_loader, args.device)
     test_cosine_pearson.append(test_pearson)

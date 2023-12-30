@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch
 
 class MeanSelfAttentionPooling(nn.Module):
-    def __init__(self, config, starting_state):
+    def __init__(self, starting_state):
         super().__init__()
         self.starting_state = starting_state
 

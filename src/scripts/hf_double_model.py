@@ -11,26 +11,22 @@ class CosineSimilarity(nn.Module):
         out_1_norm = F.normalize(out1, p=2.0, dim=1)
         out_2_norm = F.normalize(out2, p=2.0, dim=1)
         return (out_1_norm * out_2_norm).sum(dim=1)
-
-class DifferenceConcatenation(nn.Module):
-
-    def __init__(self, hidden_size):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.linear = nn.Linear(hidden_size * 3, 3, bias=True)
-
-    def forward(self, out1, out2):
-        concatenation = torch.cat((out1, out2, torch.abs(out1 - out2)), dim=1)
-        return self.linear(concatenation)
     
-class Model(nn.Module):
+class DoubleModel(nn.Module):
     def __init__(self, args):
         super().__init__()
 
-        self.model_name = args.model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-        self.model = AutoModel.from_pretrained(args.model_name)
-        self.config = AutoConfig.from_pretrained(args.model_name)
+        # tokenizer is the same
+        self.combination = args.combination
+        self.tokenizer = AutoTokenizer.from_pretrained(args.model_name_disc)
+
+        self.model_name_disc = args.model_name_disc
+        self.model_disc = AutoModel.from_pretrained(args.model_name_disc)
+        self.config_disc = AutoConfig.from_pretrained(args.model_name_disc)
+
+        self.model_name_gen = args.model_name_gen
+        self.model_gen = AutoModel.from_pretrained(args.model_name_gen)
+        self.config_gen = AutoConfig.from_pretrained(args.model_name_gen)
         
         if args.pooling_fn == "mean":
             self.pooling_fn = MeanPooling(args.last_k_states, args.starting_state)
@@ -38,25 +34,29 @@ class Model(nn.Module):
             self.pooling_fn = NormMeanPooling(args.last_k_states, args.starting_state)
         elif args.pooling_fn == "mean_self_attention":
             self.pooling_fn = MeanSelfAttentionPooling(args.starting_state)
-        elif args.pooling_fn == "mean_encoder":
-            self.pooling_fn = MeanEncoderPooling(self.config, args.starting_state)
         elif args.pooling_fn == "max":
             self.pooling_fn = MaxPooling(args.last_k_states, args.starting_state)
         elif args.pooling_fn == "cls":
             self.pooling_fn = CLSPooling(args.last_k_states, args.starting_state)
-        elif args.pooling_fn == "weighted_mean":
-            self.pooling_fn = WeightedMeanPooling(self.config, args.last_k_states, args.starting_state)
-        elif args.pooling_fn == "weighted_per_component_mean":
-            self.pooling_fn = WeightedPerComponentMeanPooling(self.config, self.tokenizer)
 
-        if args.dataset == "nli":
-            self.final_layer = DifferenceConcatenation(self.config.hidden_size)
-        elif "sts" in args.dataset:
+        if "sts" in args.dataset:
             self.final_layer = CosineSimilarity()
 
-    def forward_once(self, inputs):
-        out = self.model(**inputs, output_hidden_states=True)
-        out_mean = self.pooling_fn(out, inputs["attention_mask"])
+    def forward_once(self, input):
+        out_disc = self.model_disc(**input, output_hidden_states=True)
+        out_gen = self.model_gen(**input, output_hidden_states=True)
+        
+        if self.combination == "concat":
+            out = out_disc
+            new_hidden_states = []
+            for i in range(len(out["hidden_states"])):
+                new_hidden_states.append(
+                    torch.cat((out_disc["hidden_states"][i], out_gen["hidden_states"][i]), dim=-1)
+                )
+            out["hidden_states"] = tuple(new_hidden_states)
+            out["last_hidden_state"] = new_hidden_states[-1]
+        
+        out_mean = self.pooling_fn(out, input["attention_mask"])
         return out_mean
 
     def forward(self, s1, s2):
