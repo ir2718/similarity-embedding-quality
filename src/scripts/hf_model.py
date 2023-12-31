@@ -34,6 +34,8 @@ class Model(nn.Module):
         
         if args.pooling_fn == "mean":
             self.pooling_fn = MeanPooling(args.last_k_states, args.starting_state)
+        if args.pooling_fn == "max_mean":
+            self.pooling_fn = MaxMeanPooling(args.last_k_states, args.starting_state)
         if args.pooling_fn == "norm_mean":
             self.pooling_fn = NormMeanPooling(args.last_k_states, args.starting_state)
         elif args.pooling_fn == "mean_self_attention":

@@ -55,7 +55,7 @@ class DoubleModel(nn.Module):
                 )
             out["hidden_states"] = tuple(new_hidden_states)
             out["last_hidden_state"] = new_hidden_states[-1]
-        
+
         out_mean = self.pooling_fn(out, input["attention_mask"])
         return out_mean
 

@@ -17,6 +17,8 @@ from src.scripts.pooling_functions import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
+parser.add_argument("--num_frozen_layers", default=0, type=int)
+parser.add_argument("--starting_freeze", default=11, type=int)
 parser.add_argument("--last_k_states", default=1, type=int)
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
@@ -70,6 +72,12 @@ if not args.unsupervised:
         torch.manual_seed(seed)
         
         model = Model(args).to(args.device)
+
+        if args.num_frozen_layers > 0:
+            layers = model.model.encoder.layer if hasattr(model.model.encoder, "layer") else model.model.encoder.layers
+            for l in layers[args.starting_freeze : args.starting_freeze + args.num_frozen_layers]:
+                for p in l.parameters():
+                    p.requires_grad = False
 
         optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
         optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
@@ -139,7 +147,9 @@ stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
 mean_cosine_pearson_test = np.mean(test_cosine_pearson)
 stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 
-json_res_path = os.path.join(model_dir, "test_results" + (f"_{args.dataset}" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + ".json")
+json_res_path = os.path.join(
+    model_dir, 
+    "test_results" + (f"_{args.dataset}" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}"if args.num_frozen_layers != 0 else "") + ".json")
 
 with open(json_res_path, "w") as f:
     json.dump({

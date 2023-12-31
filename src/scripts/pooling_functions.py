@@ -90,6 +90,26 @@ class CLSPooling(nn.Module):
         mean_of_cls = last_k_cls.mean(dim=0)
         return mean_of_cls
     
+class MaxMeanPooling(nn.Module):
+    def __init__(self, last_k_states, starting_state):
+        super().__init__()
+        self.last_k = last_k_states
+        self.starting_state = starting_state
+        self.lambda_ = torch.nn.Parameter(torch.tensor(0.5))
+
+    def forward(self, hidden, attention_mask):
+        last_k_hidden = torch.stack(
+            hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
+        ).mean(dim=0, keepdim=True)
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_k_hidden.size()).float()
+        emb_sum = torch.sum(last_k_hidden * input_mask_expanded, dim=2)
+        sum_mask = torch.clamp(input_mask_expanded.sum(dim=2), min=1e-9) # denominator
+        emb_mean = emb_sum / sum_mask
+
+        last_k_hidden[input_mask_expanded == 0] = -1e9  # Set padding tokens to large negative value
+        emb_max = torch.max(last_k_hidden, dim=-2)[0].mean(dim=0)
+        return self.lambda_ * emb_mean.squeeze(0) + (1 - self.lambda_) * emb_max
+    
 class MeanPooling(nn.Module):
     def __init__(self, last_k_states, starting_state):
         super().__init__()
