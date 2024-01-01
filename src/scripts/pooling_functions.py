@@ -126,6 +126,24 @@ class MeanPooling(nn.Module):
         emb_mean = emb_sum / sum_mask
         return emb_mean.squeeze(0)
 
+class GeMPooling(nn.Module):
+    def __init__(self, last_k_states, starting_state):
+        super().__init__()
+        self.last_k = last_k_states
+        self.starting_state = starting_state
+        self.p = nn.Parameter(torch.tensor(1.0))
+
+    def forward(self, hidden, attention_mask):
+        last_k_hidden = torch.stack(
+            hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
+        ).mean(dim=0)
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_k_hidden.size()).float()
+        emb_sum = torch.sum( (last_k_hidden.clamp(min=1e-9)**self.p * input_mask_expanded), dim=1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(dim=1), min=1e-9) # denominator
+        emb_mean = (emb_sum / sum_mask)**(1./self.p)
+        return emb_mean
+    
+
 class NormMeanPooling(nn.Module):
     def __init__(self, last_k_states, starting_state):
         super().__init__()

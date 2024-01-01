@@ -19,6 +19,7 @@ parser.add_argument("--model_name_disc", default="google/electra-base-discrimina
 parser.add_argument("--model_name_gen", default="google/electra-base-generator", type=str)
 parser.add_argument("--combination", default="concat", type=str) # concat
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
+parser.add_argument("--final_layer", default="cosine", type=str) # cosine, manhattan, euclidean, dot
 parser.add_argument("--last_k_states", default=1, type=int)
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)

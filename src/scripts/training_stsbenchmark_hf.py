@@ -18,6 +18,8 @@ from src.scripts.pooling_functions import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
+parser.add_argument("--final_layer", default="cosine", type=str) # cosine, manhattan, euclidean, dot
+parser.add_argument("--loss_function", default="mse", type=str) # mse, cross_entropy
 parser.add_argument("--num_frozen_layers", default=0, type=int)
 parser.add_argument("--starting_freeze", default=11, type=int)
 parser.add_argument("--last_k_states", default=1, type=int)
@@ -60,11 +62,6 @@ model_dir = os.path.join(
 )
 os.makedirs(model_dir, exist_ok=True)
 
-if "sts" in args.dataset:
-    loss_f = nn.MSELoss() 
-elif args.dataset == "nli":
-    loss_f = nn.CrossEntropyLoss()
-
 test_cosine_spearman, test_cosine_pearson = [], []
 if not args.unsupervised:
     for seed in range(args.num_seeds):
@@ -74,6 +71,11 @@ if not args.unsupervised:
         torch.manual_seed(seed)
         
         model = Model(args).to(args.device)
+        loss_dict = {
+            "mse": nn.MSELoss(),
+            "cross_entropy": nn.CrossEntropyLoss(),
+        }
+        loss_f = loss_dict[args.loss_function]
 
         if args.num_frozen_layers > 0:
             layers = model.model.encoder.layer if hasattr(model.model.encoder, "layer") else model.model.encoder.layers
@@ -160,7 +162,13 @@ stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 if not args.save_model:
     json_res_path = os.path.join(
         model_dir, 
-        "test_results" + (f"_{args.dataset}" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}"if args.num_frozen_layers != 0 else "") + ".json")
+        "test_results" + 
+            (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
+            ("_unsupervised" if args.unsupervised else "") + 
+            (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
+            (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}" if args.num_frozen_layers != 0 else "") + 
+            ".json"
+        )
 
     with open(json_res_path, "w") as f:
         json.dump({
