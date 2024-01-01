@@ -8,6 +8,7 @@ import torch
 import numpy as np
 import json
 import argparse
+from datetime import datetime
 from tqdm import tqdm
 from copy import deepcopy
 from src.scripts.hf_model import Model
@@ -31,6 +32,7 @@ parser.add_argument("--dataset", type=str, default="stsb") # stsb, kor_sts, serb
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_save_path", default="output", type=str)
+parser.add_argument("--save_model", action="store_true")
 parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
@@ -120,6 +122,14 @@ if not args.unsupervised:
             print(f"Spearman - {val_spearman}")
             print(f" Pearson - {val_pearson}\n")
     
+        if args.save_model:
+            current_time = datetime.now()
+            formatted_time = current_time.strftime("%Y_%m_%d_%H_%M")
+            torch.save(
+                best_model.model, 
+                os.path.join(model_dir, f"model_{formatted_time}.pkl")
+            )
+
         best_model = best_model.to(args.device)
 
         test_pearson, test_spearman = model.validate(test_loader, args.device)
@@ -147,16 +157,17 @@ stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
 mean_cosine_pearson_test = np.mean(test_cosine_pearson)
 stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 
-json_res_path = os.path.join(
-    model_dir, 
-    "test_results" + (f"_{args.dataset}" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}"if args.num_frozen_layers != 0 else "") + ".json")
+if not args.save_model:
+    json_res_path = os.path.join(
+        model_dir, 
+        "test_results" + (f"_{args.dataset}" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}"if args.num_frozen_layers != 0 else "") + ".json")
 
-with open(json_res_path, "w") as f:
-    json.dump({
-        "mean_cosine_spearman_test": mean_cosine_spearman_test,
-        "stdev_cosine_spearman_test": stdev_cosine_spearman_test,
-        "mean_cosine_pearson_test": mean_cosine_pearson_test,
-        "stdev_cosine_pearson_test": stdev_cosine_pearson_test,
-        "values_spearman": test_cosine_spearman,
-        "values_pearson": test_cosine_pearson,
-    }, f)
+    with open(json_res_path, "w") as f:
+        json.dump({
+            "mean_cosine_spearman_test": mean_cosine_spearman_test,
+            "stdev_cosine_spearman_test": stdev_cosine_spearman_test,
+            "mean_cosine_pearson_test": mean_cosine_pearson_test,
+            "stdev_cosine_pearson_test": stdev_cosine_pearson_test,
+            "values_spearman": test_cosine_spearman,
+            "values_pearson": test_cosine_pearson,
+        }, f)
