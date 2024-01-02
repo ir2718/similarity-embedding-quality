@@ -62,7 +62,7 @@ with gzip.open(sts_dataset_path, 'rt', encoding='utf8') as fIn:
             train_samples.append(inp_example)
 
 
-model_save_path = model_save_path = 'output/training_stsbenchmark_'+args.model_name.replace("/", "-")
+model_save_path = 'output/training_stsbenchmark_'+args.model_name.replace("/", "-")
 for seed in range(args.num_seeds):
     # Setting seed for all random initializations
     logging.info("##### Seed {} #####".format(seed))

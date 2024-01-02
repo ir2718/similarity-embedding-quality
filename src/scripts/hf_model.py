@@ -13,6 +13,8 @@ class Model(nn.Module):
         self.model_name = args.model_name
         self.tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         self.model = AutoModel.from_pretrained(args.model_name)
+        if not args.model_load_path is None:
+            self.model.load_state_dict(torch.load(args.model_load_path), strict=False)
         self.config = AutoConfig.from_pretrained(args.model_name)
 
         final_layer_dict = {

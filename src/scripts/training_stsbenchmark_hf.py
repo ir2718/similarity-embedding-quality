@@ -33,6 +33,7 @@ parser.add_argument("--unsupervised", action="store_true")
 parser.add_argument("--dataset", type=str, default="stsb") # stsb, kor_sts, serbian_sts
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
+parser.add_argument("--model_load_path", default=None, type=str)
 parser.add_argument("--model_save_path", default="output", type=str)
 parser.add_argument("--save_model", action="store_true")
 parser.add_argument("--device", default="cuda:0", type=str)
@@ -167,6 +168,7 @@ if not args.save_model:
             ("_unsupervised" if args.unsupervised else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}" if args.num_frozen_layers != 0 else "") + 
+            ("_loaded" if not args.model_load_path is None else "") +
             ".json"
         )
 
