@@ -168,7 +168,7 @@ if not args.save_model:
             ("_unsupervised" if args.unsupervised else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}" if args.num_frozen_layers != 0 else "") + 
-            (f"_{'_'.join(args.model_load_path.split('/')[2].split('_')[:-1])}" if not args.model_load_path is None else "") +
+            (f"_{'_'.join(args.model_load_path.split('/')[2].split('_')[1:])}" if not args.model_load_path is None else "") +
             ".json"
         )
 
