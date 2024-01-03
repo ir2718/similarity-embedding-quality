@@ -17,9 +17,10 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="bert-base-cased", type=str)
 parser.add_argument("--dataset_path", default="./datasets/word_similarity_dataset.csv", type=str)
-parser.add_argument("--train_batch_size", default=32, type=int)
-parser.add_argument("--num_epochs", default=10, type=int)
+parser.add_argument("--train_batch_size", default=128, type=int)
+parser.add_argument("--num_epochs", default=50, type=int)
 parser.add_argument("--num_seeds", default=1, type=int)
+parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
 def fill_examples(df):
@@ -62,7 +63,7 @@ for seed in range(args.num_seeds):
         pooling_mode_max_tokens=False
     )
 
-    model = SentenceTransformer(modules=[word_embedding_model, pooling_model])
+    model = SentenceTransformer(modules=[word_embedding_model, pooling_model], device=args.device)
 
     curr_model_save_path = model_save_path + '/seed_' + str(seed)
 
@@ -82,6 +83,6 @@ for seed in range(args.num_seeds):
         output_path=curr_model_save_path
     )
 
-    model = SentenceTransformer(curr_model_save_path)
+    model = SentenceTransformer(curr_model_save_path, device=args.device)
     test_evaluator = EmbeddingSimilarityEvaluator.from_input_examples(test_samples, name=f'{dataset_name}-test')
     test_evaluator(model, output_path=curr_model_save_path)
