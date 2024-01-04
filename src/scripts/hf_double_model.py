@@ -33,22 +33,30 @@ class DoubleModel(nn.Module):
         elif args.pooling_fn == "cls":
             self.pooling_fn = CLSPooling(args.last_k_states, args.starting_state)
 
+        if self.combination == "compress":
+            self.compress_layer = nn.Linear(
+                in_features=self.model_disc.config.hidden_size, 
+                out_features=self.model_gen.config.hidden_size, 
+                bias=True
+            )
+
         if "sts" in args.dataset:
             self.final_layer = CosineSimilarity()
 
     def forward_once(self, input):
         out_disc = self.model_disc(**input, output_hidden_states=True)
         out_gen = self.model_gen(**input, output_hidden_states=True)
-        
-        if self.combination == "concat":
-            out = out_disc
-            new_hidden_states = []
-            for i in range(len(out["hidden_states"])):
-                new_hidden_states.append(
-                    torch.cat((out_disc["hidden_states"][i], out_gen["hidden_states"][i]), dim=-1)
-                )
-            out["hidden_states"] = tuple(new_hidden_states)
-            out["last_hidden_state"] = new_hidden_states[-1]
+    
+        out = out_disc
+        new_hidden_states = []
+        for i in range(len(out["hidden_states"])):
+            if self.combination == "concat":
+                to_append = torch.cat((out_disc["hidden_states"][i], out_gen["hidden_states"][i]), dim=-1)
+            elif self.combination == "compress":
+                to_append = self.compress_layer(out_disc["hidden_states"][i]) + out_gen["hidden_states"][i]
+            new_hidden_states.append(to_append)
+        out["hidden_states"] = tuple(new_hidden_states)
+        out["last_hidden_state"] = new_hidden_states[-1]
 
         out_mean = self.pooling_fn(out, input["attention_mask"])
         return out_mean

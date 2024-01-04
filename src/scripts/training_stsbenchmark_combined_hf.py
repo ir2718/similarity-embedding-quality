@@ -17,7 +17,7 @@ from src.scripts.pooling_functions import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name_disc", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--model_name_gen", default="google/electra-base-generator", type=str)
-parser.add_argument("--combination", default="concat", type=str) # concat
+parser.add_argument("--combination", default="concat", type=str) # concat, compress
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
 parser.add_argument("--final_layer", default="cosine", type=str) # cosine, manhattan, euclidean, dot
 parser.add_argument("--last_k_states", default=1, type=int)
@@ -136,7 +136,12 @@ stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
 mean_cosine_pearson_test = np.mean(test_cosine_pearson)
 stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 
-json_res_path = os.path.join(model_dir, "test_results" + (f"_{args.dataset}" if args.dataset != "stsb" else "") + ("_unsupervised" if args.unsupervised else "") + ".json")
+json_res_path = os.path.join(
+    model_dir, 
+    "test_results" + (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
+    ("_unsupervised" if args.unsupervised else "") + 
+    f"_{args.combination}" + 
+    ".json")
 
 with open(json_res_path, "w") as f:
     json.dump({

@@ -1,3 +1,6 @@
+script.sh
+script2.sh
+script3.sh	
 output/
 pretrained_models/
 datasets/
