@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
 parser.add_argument("--final_layer", default="cosine", type=str) # cosine, manhattan, euclidean, dot
-parser.add_argument("--loss_function", default="mse", type=str) # mse, cross_entropy
+parser.add_argument("--loss_function", default="mse", type=str) # mse, mae, smooth_mae, huber
 parser.add_argument("--num_frozen_layers", default=0, type=int)
 parser.add_argument("--starting_freeze", default=11, type=int)
 parser.add_argument("--last_k_states", default=1, type=int)
@@ -30,7 +30,7 @@ parser.add_argument("--lr", default=2e-5, type=float)
 parser.add_argument("--weight_decay", default=1e-2, type=float)
 parser.add_argument("--max_grad_norm", default=1.0, type=float)
 parser.add_argument("--unsupervised", action="store_true")
-parser.add_argument("--dataset", type=str, default="stsb") # stsb, kor_sts, serbian_sts
+parser.add_argument("--dataset", type=str, default="stsb") # stsb, kor_sts, spanish_sts, german_sts
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_load_path", default=None, type=str)
