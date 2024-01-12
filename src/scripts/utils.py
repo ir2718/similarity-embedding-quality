@@ -1,8 +1,6 @@
 from sentence_transformers import util
 from torch.utils.data import DataLoader, Dataset
 import datasets
-from sklearn.model_selection import train_test_split
-import numpy as np
 import pandas as pd
 import torch.nn as nn
 import torch

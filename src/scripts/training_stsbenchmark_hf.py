@@ -164,6 +164,13 @@ mean_cosine_pearson_test = np.mean(test_cosine_pearson)
 stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 
 if not args.save_model:
+    
+    if args.model_load_path is not None:
+        if "dapt" in args.model_load_path:
+            path_to_add = "_".join(args.model_load_path.split('/')[2:]).split(".")[0]
+        else:
+            path_to_add = f"_{'_'.join(args.model_load_path.split('/')[2].split('_')[1:])}"
+
     json_res_path = os.path.join(
         model_dir, 
         "test_results" + 
@@ -171,7 +178,7 @@ if not args.save_model:
             ("_unsupervised" if args.unsupervised else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}" if args.num_frozen_layers != 0 else "") + 
-            (f"_{'_'.join(args.model_load_path.split('/')[2].split('_')[1:])}" if not args.model_load_path is None else "") +
+            (path_to_add if args.model_load_path is not None else "") +
             (f"_{args.loss_function}" if args.loss_function != "mse" else "") +
             ".json"
         )

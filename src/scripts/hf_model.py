@@ -14,7 +14,16 @@ class Model(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         self.model = AutoModel.from_pretrained(args.model_name)
         if not args.model_load_path is None:
-            self.model.load_state_dict(torch.load(args.model_load_path), strict=False)
+            try:
+                print("Trying to load state dict . . .")
+                self.model.load_state_dict(torch.load(args.model_load_path), strict=False)
+            except TypeError:
+                try:
+                    print("Loading model instead . . .")
+                    self.model = torch.load(args.model_load_path)
+                except:
+                    pass
+
         self.config = AutoConfig.from_pretrained(args.model_name)
 
         final_layer_dict = {
@@ -64,6 +73,8 @@ class Model(nn.Module):
 
     @torch.no_grad()
     def validate(self, loader, device):
+        self.model.eval()
+        
         embeddings = torch.tensor([]).to(device)
         scores = torch.tensor([]).to(device)
         for s1, s2, score in tqdm(loader):
@@ -84,5 +95,7 @@ class Model(nn.Module):
 
         pearson = pearsonr(embeddings_np, scores_np)[0]
         spearman = spearmanr(embeddings_np, scores_np)[0]
+
+        self.model.train()
 
         return pearson, spearman
