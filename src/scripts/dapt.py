@@ -1,7 +1,9 @@
 from transformers import AutoModel, AutoTokenizer, get_linear_schedule_with_warmup, DataCollatorForLanguageModeling
 from torch.utils.data import DataLoader
 from transformers.models.bert.modeling_bert import BertLMPredictionHead
+from transformers.models.electra.modeling_electra import ElectraGeneratorPredictions
 import torch.nn.functional as F
+import torch.nn as nn
 import os
 import csv
 import torch
@@ -11,6 +13,8 @@ from src.scripts.utils import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
+parser.add_argument("--state_number", default=12, type=int)
+parser.add_argument("--num_pairs", default=10, type=int)
 parser.add_argument("--pretraining_type", default="mlm", type=str) # mlm, sentence_lm
 parser.add_argument("--train_batch_size", default=32, type=int)
 parser.add_argument("--grad_accumulation_steps", default=8, type=int)
@@ -25,12 +29,17 @@ args = parser.parse_args()
 ###########################################################
 
 model = AutoModel.from_pretrained(args.model_name).to(args.device)
-lm_head = BertLMPredictionHead(model.config).to(args.device)
-lm_head.decoder.weight = model.embeddings.word_embeddings.weight
-tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
-#print(model.embeddings.word_embeddings.weight)
-#print(lm_head.decoder.weight)
+if args.model_name == "google/electra-base-generator":
+    generator_predictions = ElectraGeneratorPredictions(model.config)
+    generator_lm_head = nn.Linear(model.config.embedding_size, model.config.vocab_size)
+    generator_lm_head.weight = model.embeddings.word_embeddings.weight
+    lm_head = nn.Sequential(generator_predictions, generator_lm_head).to(args.device)
+else:
+    lm_head = BertLMPredictionHead(model.config).to(args.device)
+    lm_head.decoder.weight = model.embeddings.word_embeddings.weight
+
+tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
 def mean_pooling(model_output, attention_mask):
     token_embeddings = model_output #First element of model_output contains all token embeddings
@@ -86,9 +95,11 @@ scheduler = get_linear_schedule_with_warmup(
 iter_num = 1
 track_losses = []
 
-if args.pretraining_type == "mlm":
-    #if model.eos_token is not None:
-    #    model.pad_token = model.eos_token
+if args.pretraining_type == "sentence_lm":
+    order_modeling_head = nn.Sequential(
+        nn.Linear(in_features=3*model.config.hidden_size, out_features=1, bias=True)
+    )
+elif args.pretraining_type == "mlm":
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=True,
@@ -103,9 +114,11 @@ for e in range(args.num_epochs):
         if args.pretraining_type == "sentence_lm":
             tokenized = tokenizer(batch, padding=True, truncation=True, return_tensors="pt")
             tokenized_gpu = batch_to_device(tokenized, args.device)
-            out = model(**tokenized_gpu).last_hidden_state # N, seq_len, hidden_size
 
-            context_emb = mean_pooling(out, attention_mask=tokenized_gpu["attention_mask"]) # N, hidden_size
+            out = model(**tokenized_gpu, output_hidden_states=True)
+            out_state = out.hidden_states[args.state_number] # N, seq_len, hidden_size
+
+            context_emb = mean_pooling(out_state, attention_mask=tokenized_gpu["attention_mask"]) # N, hidden_size
             
             lm_out = lm_head(context_emb)
 
@@ -114,14 +127,46 @@ for e in range(args.num_epochs):
             target = torch.zeros(labels.size(0), model.config.vocab_size, device=args.device).scatter_(-1, labels, 1.)
             target[:, tokenizer.pad_token_id] = 0.
             
-            loss = F.binary_cross_entropy_with_logits(lm_out, target, reduction="mean")
+            word_loss = F.binary_cross_entropy_with_logits(lm_out, target, reduction="mean")
+
+            inputs_1, inputs_2, labels = [], [], []
+            nonzero_mask = torch.nonzero(tokenized_gpu["input_ids"] != tokenizer.pad_token_id)
+            for k in args.batch_size:
+                nonzero_mask_ex = nonzero_mask[nonzero_mask[:, 0] == k]
+                embs_for_ex = out.hidden_states[0][k]
+                
+                new_indices_1 = torch.randint_like(nonzero_mask_ex, low=0, high=nonzero_mask_ex.shape[0])
+                nonzero_mask_ex_1 = nonzero_mask_ex[new_indices_1][:args.num_pairs]
+
+                new_indices_2 = torch.randint_like(nonzero_mask_ex, low=0, high=nonzero_mask_ex.shape[0])
+                nonzero_mask_ex_2 = nonzero_mask_ex[new_indices_2][:args.num_pairs]
+                while torch.any(new_indices_1 == new_indices_2):
+                    new_indices_2 = torch.randint_like(nonzero_mask_ex, low=0, high=nonzero_mask_ex.shape[0])
+                    nonzero_mask_ex_2 = nonzero_mask_ex[new_indices_2][:args.num_pairs]
+                
+                inputs_1.append(torch.cat((embs_for_ex[nonzero_mask_ex_1], context_emb), dim=-1).unsqueeze(0))
+                inputs_2.append(torch.cat((embs_for_ex[nonzero_mask_ex_2], context_emb), dim=-1).unsqueeze(0))
+                label = (nonzero_mask_ex_1 > nonzero_mask_ex_2).float()
+                label[label == 0.] = -1.
+                labels.append(label.unsqueeze(0))
+
+            inputs_torch_1 = torch.stack(inputs_1, dim=0)
+            inputs_torch_2 = torch.stack(inputs_2, dim=0)
+            labels_torch = torch.stack(labels)
+
+            out_1 = order_modeling_head(inputs_torch_1)
+            out_2 = order_modeling_head(inputs_torch_2)
+
+            order_loss = F.margin_ranking_loss(out_1, out_2, labels_torch)
+            
+            loss = order_loss + word_loss
 
         elif args.pretraining_type == "mlm":
             tokenized = tokenizer(batch, padding=True, truncation=True, return_tensors="pt")
             inputs, labels = data_collator.torch_mask_tokens(tokenized["input_ids"])
             labels = labels.to(args.device)
             tokenized_gpu = batch_to_device(tokenized, args.device)
-            out = model(**tokenized_gpu).last_hidden_state # N, seq_len, hidden_size
+            out = model(**tokenized_gpu, output_hidden_states=True).hidden_states[args.state_number] # N, seq_len, hidden_size
 
             # labels are N, seq_len
             lm_out = lm_head(out) # N, seq_len, vocab_size
