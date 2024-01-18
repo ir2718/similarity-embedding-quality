@@ -36,6 +36,7 @@ parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_load_path", default=None, type=str)
 parser.add_argument("--model_save_path", default="output", type=str)
 parser.add_argument("--save_model", action="store_true")
+parser.add_argument("--save_results", action="store_true")
 parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
@@ -163,13 +164,12 @@ stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
 mean_cosine_pearson_test = np.mean(test_cosine_pearson)
 stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
 
-if not args.save_model:
-    
+if args.save_results:
     if args.model_load_path is not None:
         if "dapt" in args.model_load_path:
-            path_to_add = "_".join(args.model_load_path.split('/')[2:]).split(".")[0]
+            path_to_add = f"_{'_'.join(args.model_load_path.split('/')[2:]).split('.')[0]}"
         else:
-            path_to_add = f"_{'_'.join(args.model_load_path.split('/')[2].split('_')[1:])}"
+            path_to_add = f"_{args.model_load_path.split('/')[-1].split('.')[0]}"
 
     json_res_path = os.path.join(
         model_dir, 
