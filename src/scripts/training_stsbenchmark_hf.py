@@ -134,7 +134,7 @@ if not args.unsupervised:
             formatted_time = current_time.strftime("%Y_%m_%d_%H_%M")
             torch.save(
                 best_model.model, 
-                os.path.join(model_dir, f"model_{formatted_time}.pkl")
+                os.path.join(model_dir, f"model_{formatted_time}.pt")
             )
 
         best_model = best_model.to(args.device)
