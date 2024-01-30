@@ -14,8 +14,6 @@ from src.scripts.utils import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--state_number", default=12, type=int)
-parser.add_argument("--num_pairs", default=10, type=int)
-parser.add_argument("--pretraining_type", default="mlm", type=str) # mlm, sentence_lm
 parser.add_argument("--train_batch_size", default=32, type=int)
 parser.add_argument("--grad_accumulation_steps", default=8, type=int)
 parser.add_argument("--lr", default=2e-5, type=float)
@@ -95,83 +93,26 @@ scheduler = get_linear_schedule_with_warmup(
 iter_num = 1
 track_losses = []
 
-if args.pretraining_type == "sentence_lm":
-    order_modeling_head = nn.Sequential(
-        nn.Linear(in_features=3*model.config.hidden_size, out_features=1, bias=True)
-    )
-elif args.pretraining_type == "mlm":
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
-        mlm=True,
-        mlm_probability=0.15,
-        return_tensors="pt"
-    )
+data_collator = DataCollatorForLanguageModeling(
+    tokenizer=tokenizer,
+    mlm=True,
+    mlm_probability=0.15,
+    return_tensors="pt"
+)
 
 for e in range(args.num_epochs):
     batch_idx = 0
     for batch in tqdm(dataloader):
+        tokenized = tokenizer(batch, padding=True, truncation=True, return_tensors="pt")
+        inputs, labels = data_collator.torch_mask_tokens(tokenized["input_ids"])
+        labels = labels.to(args.device)
+        tokenized_gpu = batch_to_device(tokenized, args.device)
+        out = model(**tokenized_gpu, output_hidden_states=True).hidden_states[args.state_number] # N, seq_len, hidden_size
 
-        if args.pretraining_type == "sentence_lm":
-            tokenized = tokenizer(batch, padding=True, truncation=True, return_tensors="pt")
-            tokenized_gpu = batch_to_device(tokenized, args.device)
+        # labels are N, seq_len
+        lm_out = lm_head(out) # N, seq_len, vocab_size
 
-            out = model(**tokenized_gpu, output_hidden_states=True)
-            out_state = out.hidden_states[args.state_number] # N, seq_len, hidden_size
-
-            context_emb = mean_pooling(out_state, attention_mask=tokenized_gpu["attention_mask"]) # N, hidden_size
-            
-            lm_out = lm_head(context_emb)
-
-            labels = tokenized_gpu["input_ids"]
-            labels = torch.where(labels == tokenizer.pad_token_id, torch.tensor(tokenizer.pad_token_id, device=args.device), labels)
-            target = torch.zeros(labels.size(0), model.config.vocab_size, device=args.device).scatter_(-1, labels, 1.)
-            target[:, tokenizer.pad_token_id] = 0.
-            
-            word_loss = F.binary_cross_entropy_with_logits(lm_out, target, reduction="mean")
-
-            inputs_1, inputs_2, labels = [], [], []
-            nonzero_mask = torch.nonzero(tokenized_gpu["input_ids"] != tokenizer.pad_token_id)
-            for k in args.batch_size:
-                nonzero_mask_ex = nonzero_mask[nonzero_mask[:, 0] == k]
-                embs_for_ex = out.hidden_states[0][k]
-                
-                new_indices_1 = torch.randint_like(nonzero_mask_ex, low=0, high=nonzero_mask_ex.shape[0])
-                nonzero_mask_ex_1 = nonzero_mask_ex[new_indices_1][:args.num_pairs]
-
-                new_indices_2 = torch.randint_like(nonzero_mask_ex, low=0, high=nonzero_mask_ex.shape[0])
-                nonzero_mask_ex_2 = nonzero_mask_ex[new_indices_2][:args.num_pairs]
-                while torch.any(new_indices_1 == new_indices_2):
-                    new_indices_2 = torch.randint_like(nonzero_mask_ex, low=0, high=nonzero_mask_ex.shape[0])
-                    nonzero_mask_ex_2 = nonzero_mask_ex[new_indices_2][:args.num_pairs]
-                
-                inputs_1.append(torch.cat((embs_for_ex[nonzero_mask_ex_1], context_emb), dim=-1).unsqueeze(0))
-                inputs_2.append(torch.cat((embs_for_ex[nonzero_mask_ex_2], context_emb), dim=-1).unsqueeze(0))
-                label = (nonzero_mask_ex_1 > nonzero_mask_ex_2).float()
-                label[label == 0.] = -1.
-                labels.append(label.unsqueeze(0))
-
-            inputs_torch_1 = torch.stack(inputs_1, dim=0)
-            inputs_torch_2 = torch.stack(inputs_2, dim=0)
-            labels_torch = torch.stack(labels)
-
-            out_1 = order_modeling_head(inputs_torch_1)
-            out_2 = order_modeling_head(inputs_torch_2)
-
-            order_loss = F.margin_ranking_loss(out_1, out_2, labels_torch)
-            
-            loss = order_loss + word_loss
-
-        elif args.pretraining_type == "mlm":
-            tokenized = tokenizer(batch, padding=True, truncation=True, return_tensors="pt")
-            inputs, labels = data_collator.torch_mask_tokens(tokenized["input_ids"])
-            labels = labels.to(args.device)
-            tokenized_gpu = batch_to_device(tokenized, args.device)
-            out = model(**tokenized_gpu, output_hidden_states=True).hidden_states[args.state_number] # N, seq_len, hidden_size
-
-            # labels are N, seq_len
-            lm_out = lm_head(out) # N, seq_len, vocab_size
-
-            loss = F.cross_entropy(lm_out.view(-1, tokenizer.vocab_size), labels.view(-1), ignore_index=-100)
+        loss = F.cross_entropy(lm_out.view(-1, tokenizer.vocab_size), labels.view(-1), ignore_index=-100)
             
         loss = loss / args.grad_accumulation_steps
         loss.backward()
@@ -179,7 +120,7 @@ for e in range(args.num_epochs):
 
         if iter_num % 100 == 0:
             print(f"Iteration {iter_num}: {loss.item()  * args.grad_accumulation_steps}")
-            with open(os.path.join(model_save_path, f"losses_{args.pretraining_type}.txt"), "a") as f:
+            with open(os.path.join(model_save_path, f"losses.txt"), "a") as f:
                 f.write("\n".join([str(x.cpu().tolist()) for x in track_losses]) + "\n")
             track_losses = []
 
@@ -193,9 +134,9 @@ for e in range(args.num_epochs):
     
     torch.save(
         model, 
-        os.path.join(model_save_path, f"model_epoch_{e}_{args.pretraining_type}.pt")
+        os.path.join(model_save_path, f"model_epoch_{e}_mlm.pt")
     )
     torch.save(
         lm_head, 
-        os.path.join(model_save_path, f"head_epoch_{e}_{args.pretraining_type}.pt")
+        os.path.join(model_save_path, f"head_epoch_{e}_mlm.pt")
     )
