@@ -4,7 +4,6 @@ from sentence_transformers import SentenceTransformer,  LoggingHandler, losses, 
 from sentence_transformers.evaluation import EmbeddingSimilarityEvaluator
 from sentence_transformers.readers import InputExample
 import logging
-from sklearn.model_selection import train_test_split
 import random
 import torch
 import numpy as np
@@ -79,7 +78,7 @@ word_embedding_model = ChooseHiddenStateTransformer(args.starting_state, args.mo
 
 model = SentenceTransformer(modules=[word_embedding_model, pooling_model], device=args.device)
 
-curr_model_save_path = model_save_path + '/seed_' + str(args.seed)
+curr_model_save_path = model_save_path + f'/seed_{args.seed}' + f'/{args.starting_state}'
 
 train_dataloader = DataLoader(train_samples, shuffle=True, batch_size=args.train_batch_size)
 train_loss = losses.CosineSimilarityLoss(model=model)
@@ -98,7 +97,7 @@ model.fit(
 )
 
 del model
-word_embedding_model = models.Transformer(args.model_name)
+word_embedding_model = ChooseHiddenStateTransformer(args.starting_state, args.model_name)
 pooling_model = models.Pooling(
     word_embedding_model.get_word_embedding_dimension(),
     pooling_mode_mean_tokens=True,
