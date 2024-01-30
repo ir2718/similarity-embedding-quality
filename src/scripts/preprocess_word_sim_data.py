@@ -1,4 +1,10 @@
 import pandas as pd
+from sklearn.model_selection import train_test_split
+import random
+import numpy as np
+
+np.random.seed(0)
+random.seed(0)
 
 rg = pd.read_csv("./datasets/word_sim/rg-65.csv")
 rg["similarity"] = rg["similarity"] / 4.
@@ -27,5 +33,13 @@ final_df = final_df.drop_duplicates(subset='sorted_pair', keep='first')
 final_df = final_df.drop(columns=['sorted_pair'])
 final_df.reset_index(inplace=True, drop=True)
 
-final_df.to_csv("./datasets/word_similarity_dataset.csv")
-print(final_df.shape)
+#final_df.to_csv("./datasets/word_similarity_dataset.csv")
+
+df_train, df_test = train_test_split(final_df, train_size=0.7, test_size=0.3)
+df_val, df_test = train_test_split(df_test, train_size=0.5, test_size=0.5)
+
+df_train.to_csv("./datasets/word_similarity_dataset_train.csv")
+df_val.to_csv("./datasets/word_similarity_dataset_val.csv")
+df_test.to_csv("./datasets/word_similarity_dataset_test.csv")
+
+print(df_train.shape, df_val.shape, df_test.shape)
