@@ -5,7 +5,8 @@ from src.scripts.utils import batch_to_device
 from tqdm import tqdm
 from scipy.stats import pearsonr, spearmanr
 from src.scripts.final_layers import *
-    
+from safetensors.torch import load_file
+
 class Model(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -16,11 +17,17 @@ class Model(nn.Module):
         if not args.model_load_path is None:
             try:
                 print("Trying to load state dict . . .")
-                self.model.load_state_dict(torch.load(args.model_load_path), strict=False)
+                if args.model_load_path.endswith("model.safetensors"):
+                    self.model.load_state_dict(load_file(args.model_load_path), strict=False)
+                else:
+                    self.model.load_state_dict(torch.load(args.model_load_path), strict=False)
             except TypeError:
                 try:
                     print("Loading model instead . . .")
-                    self.model = torch.load(args.model_load_path)
+                    if args.model_load_path.endswith("model.safetensors"):
+                        self.model = load_file(args.model_load_path)
+                    else:
+                        self.model = torch.load(args.model_load_path)
                 except:
                     pass
 

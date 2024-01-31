@@ -169,7 +169,7 @@ if args.save_results:
         if "dapt" in args.model_load_path:
             path_to_add = f"_{'_'.join(args.model_load_path.split('/')[2:]).split('.')[0]}"
         else:
-            path_to_add = f"_{args.model_load_path.split('/')[-1].split('.')[0]}"
+            path_to_add = "_".join(args.model_load_path.split('/')[-4].split("_")[1:])
 
     json_res_path = os.path.join(
         model_dir, 
