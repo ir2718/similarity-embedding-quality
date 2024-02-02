@@ -10,6 +10,8 @@ import torch
 import argparse
 from tqdm import tqdm
 from src.scripts.utils import *
+import random
+import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
@@ -22,7 +24,12 @@ parser.add_argument("--max_grad_norm", default=1.0, type=float)
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--model_save_path", default="dapt", type=str)
 parser.add_argument("--device", default="cuda:0", type=str)
+parser.add_argument("--seed", default=0, type=int)
 args = parser.parse_args()
+
+random.seed(args.seed)
+np.random.seed(args.seed)
+torch.manual_seed(args.seed)
 
 ###########################################################
 
