@@ -106,6 +106,7 @@ data_collator = DataCollatorForLanguageModeling(
     return_tensors="pt"
 )
 
+path_to_add = '' if args.state_number == 12 else '_' + args.state_number
 for e in range(args.num_epochs):
     batch_idx = 0
     for batch in tqdm(dataloader):
@@ -126,7 +127,7 @@ for e in range(args.num_epochs):
 
         if iter_num % 100 == 0:
             print(f"Iteration {iter_num}: {loss.item()  * args.grad_accumulation_steps}")
-            with open(os.path.join(model_save_path, f"losses.txt"), "a") as f:
+            with open(os.path.join(model_save_path, f"losses{path_to_add}.txt"), "a") as f:
                 f.write("\n".join([str(x.cpu().tolist()) for x in track_losses]) + "\n")
             track_losses = []
 
@@ -140,9 +141,9 @@ for e in range(args.num_epochs):
     
     torch.save(
         model, 
-        os.path.join(model_save_path, f"model_epoch_{e}_mlm.pt")
+        os.path.join(model_save_path, f"model_epoch_{e}_mlm{path_to_add}.pt")
     )
     torch.save(
         lm_head, 
-        os.path.join(model_save_path, f"head_epoch_{e}_mlm.pt")
+        os.path.join(model_save_path, f"head_epoch_{e}_mlm{path_to_add}.pt")
     )
