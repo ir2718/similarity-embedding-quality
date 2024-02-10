@@ -117,6 +117,7 @@ class MeanPooling(nn.Module):
         self.starting_state = starting_state
 
     def forward(self, hidden, attention_mask):
+        # model truncation
         last_k_hidden = torch.stack(
             hidden.hidden_states[self.starting_state : self.starting_state + self.last_k]
         ).mean(dim=0, keepdim=True)

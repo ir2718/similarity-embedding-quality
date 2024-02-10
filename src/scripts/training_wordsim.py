@@ -70,6 +70,7 @@ class ChooseHiddenStateTransformer(models.Transformer):
         if 'token_type_ids' in features:
             trans_features['token_type_ids'] = features['token_type_ids']
         output_states = self.auto_model(**trans_features, output_hidden_states=True)
+        # model truncation
         output_tokens = output_states.hidden_states[self.state]
         features.update({'token_embeddings': output_tokens, 'attention_mask': features['attention_mask']})
         return features
