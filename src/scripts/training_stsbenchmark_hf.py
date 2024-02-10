@@ -131,7 +131,7 @@ if not args.unsupervised:
     
         if args.save_model:
             current_time = datetime.now()
-            formatted_time = current_time.strftime("%Y_%m_%d_%H_%M")
+            formatted_time = current_time.strftime("%Y_%m_%d_%H_%M_%S")
             torch.save(
                 best_model.model, 
                 os.path.join(model_dir, f"model_{formatted_time}.pt")
