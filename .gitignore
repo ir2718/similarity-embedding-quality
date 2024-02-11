@@ -1,5 +1,6 @@
 dapt/
 notebooks/data/
+notebooks/plots/
 script.sh
 script2.sh
 script3.sh	
