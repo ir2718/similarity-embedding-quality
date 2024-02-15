@@ -65,6 +65,7 @@ model_dir = os.path.join(
 os.makedirs(model_dir, exist_ok=True)
 
 test_cosine_spearman, test_cosine_pearson = [], []
+val_cosine_spearman, val_cosine_pearson = [], []
 if not args.unsupervised:
     for seed in range(args.num_seeds):
         logging.info("##### Seed {} #####".format(seed))
@@ -147,6 +148,10 @@ if not args.unsupervised:
         print(f"Spearman - {test_spearman}")
         print(f" Pearson - {test_pearson}\n")
 
+        val_pearson, val_spearman = model.validate(validation_loader, args.device)
+        val_cosine_pearson.append(val_pearson)
+        val_cosine_spearman.append(val_spearman)
+
 else:
     model = Model(args).to(args.device)
 
@@ -158,22 +163,29 @@ else:
     print(f"Spearman - {test_spearman}")
     print(f" Pearson - {test_pearson}\n")
 
-mean_cosine_spearman_test = np.mean(test_cosine_spearman)
-stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
-
-mean_cosine_pearson_test = np.mean(test_cosine_pearson)
-stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
-
 if args.save_results:
+
+    mean_cosine_spearman_test = np.mean(test_cosine_spearman)
+    stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
+
+    mean_cosine_pearson_test = np.mean(test_cosine_pearson)
+    stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
+
+    mean_cosine_spearman_val = np.mean(val_cosine_spearman)
+    stdev_cosine_spearman_val = np.std(val_cosine_spearman, ddof=1)
+
+    mean_cosine_pearson_val = np.mean(val_cosine_pearson)
+    stdev_cosine_pearson_val = np.std(val_cosine_pearson, ddof=1)
+
     if args.model_load_path is not None:
         if "dapt" in args.model_load_path:
             path_to_add = f"_{'_'.join(args.model_load_path.split('/')[2:]).split('.')[0]}"
         else:
             path_to_add = "_".join(args.model_load_path.split('/')[-4].split("_")[1:])
 
-    json_res_path = os.path.join(
+    json_res_path_test = os.path.join(
         model_dir, 
-        "test_results" + 
+        "test_results_" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             ("_unsupervised" if args.unsupervised else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
@@ -183,7 +195,7 @@ if args.save_results:
             ".json"
         )
 
-    with open(json_res_path, "w") as f:
+    with open(json_res_path_test, "w") as f:
         json.dump({
             "mean_cosine_spearman_test": mean_cosine_spearman_test,
             "stdev_cosine_spearman_test": stdev_cosine_spearman_test,
@@ -191,4 +203,27 @@ if args.save_results:
             "stdev_cosine_pearson_test": stdev_cosine_pearson_test,
             "values_spearman": test_cosine_spearman,
             "values_pearson": test_cosine_pearson,
+        }, f)
+
+    
+    json_res_path_val = os.path.join(
+        model_dir, 
+        "val_results_" + 
+            (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
+            ("_unsupervised" if args.unsupervised else "") + 
+            (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
+            (f"_frozen_{args.starting_freeze}_to_{args.starting_freeze + args.num_frozen_layers}" if args.num_frozen_layers != 0 else "") + 
+            (path_to_add if args.model_load_path is not None else "") +
+            (f"_{args.loss_function}" if args.loss_function != "mse" else "") +
+            ".json"
+        )
+
+    with open(json_res_path_val, "w") as f:
+        json.dump({
+            "mean_cosine_spearman_val": mean_cosine_spearman_val,
+            "stdev_cosine_spearman_val": stdev_cosine_spearman_val,
+            "mean_cosine_pearson_val": mean_cosine_pearson_val,
+            "stdev_cosine_pearson_val": stdev_cosine_pearson_val,
+            "values_spearman": val_cosine_spearman,
+            "values_pearson": val_cosine_pearson,
         }, f)
