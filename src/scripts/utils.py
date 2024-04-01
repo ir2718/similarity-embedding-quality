@@ -48,20 +48,67 @@ class BaseDataset(Dataset):
         # samples in format [[sentences1], [sentences2], [scores or labels]]
         # scores range is [0, 5], labels are strings
         self.s1, self.s2, self.scores = [], [], []
-        for s1, s2, score in samples:
-            self.s1.append(s1)
-            self.s2.append(s2)
-            if scale is None:
+        if len(samples[0]) == 3:
+            for s1, s2, score in samples:
+                self.s1.append(s1)
+                self.s2.append(s2)
+                if scale is None:
+                    self.scores.append(score)
+                else:
+                    self.scores.append(float(score) / scale)
+            self.dtype = torch.float32
+        else:
+            self.s1, self.s2, self.scores = [], [], []
+            for s1, score in samples:
+                self.s1.append(s1)
                 self.scores.append(score)
-            else:
-                self.scores.append(float(score) / scale)
-
+            self.dtype = torch.float32 if len(set(self.scores)) == 2 else torch.long
+            
     def __getitem__(self, idx):
-        return (self.s1[idx], self.s2[idx], torch.tensor(self.scores[idx]))
+        s1 = self.s1[idx]
+        score = torch.tensor(self.scores[idx], dtype=self.dtype)
+        if self.s2 != []:
+            s2 = self.s2[idx]
+            return (s1, s2, score)
+        return (s1, score)
 
     def __len__(self):
         return len(self.s1)
+
+def load_sst5(train_batch_size, test_batch_size):
+    data = datasets.load_dataset("SetFit/sst5")
+    columns = ["text", "label"]
+
+    train = data["train"].to_pandas()[columns].values.tolist()
+    val = data["validation"].to_pandas()[columns].values.tolist()
+    test = data["test"].to_pandas()[columns].values.tolist()
+
+    train_dataset = BaseDataset(train)
+    val_dataset = BaseDataset(val)
+    test_dataset = BaseDataset(test)
+
+    train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=test_batch_size)
+    test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
+    return train_loader, val_loader, test_loader
     
+def load_mrpc(train_batch_size, test_batch_size):
+    data = datasets.load_dataset("SetFit/mrpc")
+    columns = ["text1", "text2", "label"]
+
+    train = data["train"].to_pandas()[columns].values.tolist()
+    val = data["validation"].to_pandas()[columns].values.tolist()
+    test = data["test"].to_pandas()[columns].values.tolist()
+
+    train_dataset = BaseDataset(train)
+    val_dataset = BaseDataset(val)
+    test_dataset = BaseDataset(test)
+
+    train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=test_batch_size)
+    test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
+    return train_loader, val_loader, test_loader
+
 def load_german_sts(train_batch_size, test_batch_size):
     data = datasets.load_dataset("stsb_multi_mt", "de")
     columns = ["sentence1", "sentence2", "score"]

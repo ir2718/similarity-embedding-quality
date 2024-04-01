@@ -6,6 +6,8 @@ from tqdm import tqdm
 from scipy.stats import pearsonr, spearmanr
 from src.scripts.final_layers import *
 from safetensors.torch import load_file
+from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
+import numpy as np
 
 class Model(nn.Module):
     def __init__(self, args):
@@ -38,8 +40,17 @@ class Model(nn.Module):
             "manhattan": ManhattanSimilarity,
             "euclidean": EuclideanSimilarity,
             "dot": DotProductSimilarity,
+            "final_linear": FinalLinear,
+            "diff_concatenation": DifferenceConcatenation
         }
-        self.final_layer = final_layer_dict[args.final_layer]()
+        self.final_layer = final_layer_dict[args.final_layer]
+        if args.final_layer in ["final_linear", "diff_concatenation"]:
+            self.final_layer = self.final_layer(
+                self.model.config.hidden_size, 
+                args.num_classes-1 if args.num_classes == 2 else args.num_classes
+            )
+
+        self.dataset = args.dataset
         
         if args.pooling_fn == "mean":
             self.pooling_fn = MeanPooling(args.last_k_states, args.starting_state)
@@ -67,10 +78,12 @@ class Model(nn.Module):
         out_mean = self.pooling_fn(out, inputs["attention_mask"])
         return out_mean
 
-    def forward(self, s1, s2):
-        out1 = self.forward_once(s1)
-        out2 = self.forward_once(s2)
-        return self.final_layer(out1, out2)
+    def forward(self, text):
+        outs = [self.forward_once(x) for x in text]
+        final_out = self.final_layer(*outs)
+        if len(final_out.shape) == 2 and final_out.shape[1] == 1:
+            return final_out.reshape(-1)
+        return final_out
 
     @torch.no_grad()
     def encode(self, s1):
@@ -84,25 +97,45 @@ class Model(nn.Module):
         
         embeddings = torch.tensor([]).to(device)
         scores = torch.tensor([]).to(device)
-        for s1, s2, score in tqdm(loader):
-            s1_tok = self.tokenizer(s1, padding=True, truncation=True, return_tensors="pt")
-            s2_tok = self.tokenizer(s2, padding=True, truncation=True, return_tensors="pt")
-
-            s1_tok_device = batch_to_device(s1_tok, device)
-            s2_tok_device = batch_to_device(s2_tok, device)
+        for *texts, score in tqdm(loader):
+            tokenized_device = []
+            for t in texts:
+                tok_text = self.tokenizer(t, padding=True, truncation=True, return_tensors="pt")
+                tok_text_device = batch_to_device(tok_text, device) 
+                tokenized_device.append(tok_text_device)
             score = score.to(device)
-
-            out = self.forward(s1_tok_device, s2_tok_device)
-
+            out = self.forward(tokenized_device)
             embeddings = torch.cat((embeddings, out), axis=0)
             scores = torch.cat((scores, score), axis=0)
 
         embeddings_np = embeddings.detach().cpu().numpy()
         scores_np = scores.detach().cpu().numpy()
 
-        pearson = pearsonr(embeddings_np, scores_np)[0]
-        spearman = spearmanr(embeddings_np, scores_np)[0]
-
         self.model.train()
 
-        return pearson, spearman
+        if self.dataset in ["sst5"]:
+            preds = embeddings_np.argmax(axis=1).astype(np.int32)
+            scores_np = scores_np.astype(np.int32)
+
+            acc = accuracy_score(preds, scores_np)
+            f1 = f1_score(preds, scores_np, average="macro")
+            recall = recall_score(preds, scores_np, average="macro")
+            precision = precision_score(preds, scores_np, average="macro")
+            return acc, f1, recall, precision
+        
+        elif self.dataset in ["mrpc"]:
+            preds = (embeddings_np > 0).astype(np.int32)
+            scores_np = scores_np.astype(np.int32)
+            
+            print(preds.shape, scores_np.shape)
+            print(preds)
+            print(scores_np)
+
+            acc = accuracy_score(preds, scores_np)
+            f1 = f1_score(preds, scores_np)
+            recall = recall_score(preds, scores_np)
+            precision = precision_score(preds, scores_np)
+            return acc, f1, recall, precision
+        
+        else:
+            return pearsonr(embeddings_np, scores_np)[0], spearmanr(embeddings_np, scores_np)[0]

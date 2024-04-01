@@ -18,7 +18,7 @@ from src.scripts.pooling_functions import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
-parser.add_argument("--final_layer", default="cosine", type=str) # cosine, manhattan, euclidean, dot
+parser.add_argument("--final_layer", default="diff_concatenation", type=str) 
 parser.add_argument("--last_k_states", default=1, type=int)
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
@@ -27,8 +27,7 @@ parser.add_argument("--lr", default=2e-5, type=float)
 parser.add_argument("--weight_decay", default=1e-2, type=float)
 parser.add_argument("--max_grad_norm", default=1.0, type=float)
 parser.add_argument("--unsupervised", action="store_true")
-# semantic similarity - stsb, kor_sts, spanish_sts, german_sts
-parser.add_argument("--dataset", type=str, default="stsb") 
+parser.add_argument("--dataset", type=str, default="mrpc") # mrpc
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_load_path", default=None, type=str)
@@ -41,14 +40,9 @@ args = parser.parse_args()
 if args.last_k_states != 1 and args.pooling_fn not in ["mean", "weighted_mean", "cls", "max"]:
     raise Exception("Using last k hidden states is permitted with mean, weighted mean, cls and max pooling.")
 
-if args.dataset == "stsb":
-    loader_f = load_stsb
-elif args.dataset == "kor_sts":
-    loader_f = load_kor_sts
-elif args.dataset == "spanish_sts":
-    loader_f = load_spanish_sts
-elif args.dataset == "german_sts":
-    loader_f = load_german_sts
+if args.dataset == "mrpc":
+    loader_f = load_mrpc
+    args.num_classes = 2
 else:
     raise Exception("Dataset is not available for usage with this script.")
 
@@ -62,8 +56,8 @@ model_dir = os.path.join(
 )
 os.makedirs(model_dir, exist_ok=True)
 
-test_cosine_spearman, test_cosine_pearson = [], []
-val_cosine_spearman, val_cosine_pearson = [], []
+test_acc, test_f1, test_recall, test_precision = [], [], [], []
+val_acc, val_f1, val_recall, val_precision = [], [], [], []
 for seed in range(args.num_seeds):
     logging.info("##### Seed {} #####".format(seed))
     random.seed(seed)
@@ -71,7 +65,7 @@ for seed in range(args.num_seeds):
     torch.manual_seed(seed)
     
     model = Model(args).to(args.device)
-    loss_f = nn.MSELoss()
+    loss_f = nn.BCEWithLogitsLoss()
 
     optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
@@ -83,7 +77,7 @@ for seed in range(args.num_seeds):
     
     # training setup is same as in sentence transformers library
     for e in range(args.num_epochs):
-        best_epoch_idx, best_spearman, best_model = e, None, None
+        best_epoch_idx, best_acc, best_model = e, None, None
         for *texts, score in tqdm(train_loader):
             tokenized_device = []
             for t in texts:
@@ -93,7 +87,7 @@ for seed in range(args.num_seeds):
             score = score.to(args.device)
 
             out = model.forward(tokenized_device)
-            
+
             loss = loss_f(out, score)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
@@ -102,78 +96,96 @@ for seed in range(args.num_seeds):
             scheduler.step()
             optimizer.zero_grad()
 
-        val_pearson, val_spearman = model.validate(validation_loader, args.device)
-        if best_spearman is None or val_spearman > best_spearman:
+        acc, f1, recall, precision = model.validate(validation_loader, args.device)
+        if best_acc is None or acc > best_acc:
             best_epoch_idx = e
-            best_spearman = val_spearman
+            best_optimized_metric = acc
             best_model = deepcopy(model.cpu())
             model.to(args.device)
 
         print("============ VALIDATION ============")
         print(f"Epoch {e+1}/{args.num_epochs}")
-        print(f"Spearman - {val_spearman}")
-        print(f" Pearson - {val_pearson}\n")
-
+        print(f" Accuracy - {acc}")
+        print(f" F1 score - {f1}")
+        print(f"   Recall - {recall}")
+        print(f"Precision - {precision}\n")
+    
     if args.save_model:
         current_time = datetime.now()
         formatted_time = current_time.strftime("%Y_%m_%d_%H_%M_%S")
         torch.save(
             best_model.model, 
-            os.path.join(model_dir, f"model_{formatted_time}.pt")
+            os.path.join(model_dir, f"model_{formatted_time}_{args.dataset}.pt")
         )
 
     best_model = best_model.to(args.device)
 
-    test_pearson, test_spearman = model.validate(test_loader, args.device)
-    test_cosine_pearson.append(test_pearson)
-    test_cosine_spearman.append(test_spearman)
+    test_acc_val, test_f1_val, test_recall_val, test_precision_val = model.validate(test_loader, args.device)
+    test_acc.append(test_acc_val)
+    test_f1.append(test_f1_val)
+    test_recall.append(test_recall_val)
+    test_precision.append(test_precision_val)
 
     print("============ TEST ============")
-    print(f"Spearman - {test_spearman}")
-    print(f" Pearson - {test_pearson}\n")
+    print(f" Accuracy - {test_acc_val}")
+    print(f" F1 score - {test_f1_val}")
+    print(f"   Recall - {test_recall_val}")
+    print(f"Precision - {test_precision_val}\n")
 
-    val_pearson, val_spearman = model.validate(validation_loader, args.device)
-    val_cosine_pearson.append(val_pearson)
-    val_cosine_spearman.append(val_spearman)
-
+    val_acc_val, val_f1_val, val_recall_val, val_precision_val  = model.validate(validation_loader, args.device)
+    val_acc.append(val_acc_val)
+    val_f1.append(val_f1_val)
+    val_recall.append(val_recall_val)
+    val_precision.append(val_precision_val)
+    
 if args.save_results:
 
-    mean_cosine_spearman_test = np.mean(test_cosine_spearman)
-    stdev_cosine_spearman_test = np.std(test_cosine_spearman, ddof=1)
+    mean_acc_test = np.mean(test_acc)
+    stdev_acc_test = np.std(test_acc, ddof=1)
 
-    mean_cosine_pearson_test = np.mean(test_cosine_pearson)
-    stdev_cosine_pearson_test = np.std(test_cosine_pearson, ddof=1)
+    mean_f1_test = np.mean(test_f1)
+    stdev_f1_test = np.std(test_f1, ddof=1)
 
-    mean_cosine_spearman_val = np.mean(val_cosine_spearman)
-    stdev_cosine_spearman_val = np.std(val_cosine_spearman, ddof=1)
+    mean_recall_test = np.mean(test_recall)
+    stdev_recall_test = np.std(test_recall, ddof=1)
 
-    mean_cosine_pearson_val = np.mean(val_cosine_pearson)
-    stdev_cosine_pearson_val = np.std(val_cosine_pearson, ddof=1)
+    mean_precision_test = np.mean(test_precision)
+    stdev_precision_test = np.std(test_precision, ddof=1)
 
-    if args.model_load_path is not None:
-        if "dapt" in args.model_load_path:
-            path_to_add = f"_{'_'.join(args.model_load_path.split('/')[2:]).split('.')[0]}"
-        else:
-            path_to_add = "_".join(args.model_load_path.split('/')[-4].split("_")[1:])
+    mean_acc_val = np.mean(val_acc)
+    stdev_acc_val = np.std(val_acc, ddof=1)
+
+    mean_f1_val = np.mean(val_f1)
+    stdev_f1_val = np.std(val_f1, ddof=1)
+
+    mean_recall_val = np.mean(val_recall)
+    stdev_recall_val = np.std(val_recall, ddof=1)
+
+    mean_precision_val = np.mean(val_precision)
+    stdev_precision_val = np.std(val_precision, ddof=1)
 
     json_res_path_test = os.path.join(
         model_dir, 
         "test_results_" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
-            (path_to_add if args.model_load_path is not None else "") +
-            (f"_{args.loss_function}" if args.loss_function != "mse" else "") +
-            ".json"
+            f"_{args.dataset}.json"
         )
 
     with open(json_res_path_test, "w") as f:
         json.dump({
-            "mean_cosine_spearman_test": mean_cosine_spearman_test,
-            "stdev_cosine_spearman_test": stdev_cosine_spearman_test,
-            "mean_cosine_pearson_test": mean_cosine_pearson_test,
-            "stdev_cosine_pearson_test": stdev_cosine_pearson_test,
-            "values_spearman": test_cosine_spearman,
-            "values_pearson": test_cosine_pearson,
+            "mean_acc_test": mean_acc_test,
+            "stdev_acc_test": stdev_acc_test,
+            "mean_f1_test": mean_f1_test,
+            "stdev_f1_test": stdev_f1_test,
+            "mean_recall_test": mean_recall_test,
+            "stdev_recall_test": stdev_recall_test,
+            "mean_precision_test": mean_precision_test,
+            "stdev_precision_test": stdev_precision_test,
+            "values_acc": test_acc,
+            "values_f1": test_f1,
+            "values_recall": test_recall,
+            "values_precision": test_precision,
         }, f)
 
     
@@ -182,17 +194,21 @@ if args.save_results:
         "val_results_" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
-            (path_to_add if args.model_load_path is not None else "") +
-            (f"_{args.loss_function}" if args.loss_function != "mse" else "") +
-            ".json"
+            f"_{args.dataset}.json"
         )
 
     with open(json_res_path_val, "w") as f:
         json.dump({
-            "mean_cosine_spearman_val": mean_cosine_spearman_val,
-            "stdev_cosine_spearman_val": stdev_cosine_spearman_val,
-            "mean_cosine_pearson_val": mean_cosine_pearson_val,
-            "stdev_cosine_pearson_val": stdev_cosine_pearson_val,
-            "values_spearman": val_cosine_spearman,
-            "values_pearson": val_cosine_pearson,
+            "mean_acc_val": mean_acc_val,
+            "stdev_acc_val": stdev_acc_val,
+            "mean_f1_val": mean_f1_val,
+            "stdev_f1_val": stdev_f1_val,
+            "mean_recall_val": mean_recall_val,
+            "stdev_recall_val": stdev_recall_val,
+            "mean_precision_val": mean_precision_val,
+            "stdev_precision_val": stdev_precision_val,
+            "values_acc": val_acc,
+            "values_f1": val_f1,
+            "values_recall": val_recall,
+            "values_precision": val_precision,
         }, f)
