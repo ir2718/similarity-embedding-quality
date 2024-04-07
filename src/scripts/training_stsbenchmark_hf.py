@@ -82,8 +82,8 @@ for seed in range(args.num_seeds):
     )
     
     # training setup is same as in sentence transformers library
+    best_epoch_idx, best_spearman, best_model = 0, None, None
     for e in range(args.num_epochs):
-        best_epoch_idx, best_spearman, best_model = e, None, None
         for *texts, score in tqdm(train_loader):
             tokenized_device = []
             for t in texts:

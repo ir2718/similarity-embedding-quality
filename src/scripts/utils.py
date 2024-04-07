@@ -75,8 +75,8 @@ class BaseDataset(Dataset):
     def __len__(self):
         return len(self.s1)
 
-def load_sst5(train_batch_size, test_batch_size):
-    data = datasets.load_dataset("SetFit/sst5")
+def load_sst2(train_batch_size, test_batch_size):
+    data = datasets.load_dataset("SetFit/sst2")
     columns = ["text", "label"]
 
     train = data["train"].to_pandas()[columns].values.tolist()

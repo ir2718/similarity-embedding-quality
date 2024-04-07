@@ -27,7 +27,7 @@ parser.add_argument("--lr", default=2e-5, type=float)
 parser.add_argument("--weight_decay", default=1e-2, type=float)
 parser.add_argument("--max_grad_norm", default=1.0, type=float)
 parser.add_argument("--unsupervised", action="store_true")
-parser.add_argument("--dataset", type=str, default="sst5") # sst5
+parser.add_argument("--dataset", type=str, default="sst2") # sst2
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_load_path", default=None, type=str)
@@ -40,9 +40,9 @@ args = parser.parse_args()
 if args.last_k_states != 1 and args.pooling_fn not in ["mean", "weighted_mean", "cls", "max"]:
     raise Exception("Using last k hidden states is permitted with mean, weighted mean, cls and max pooling.")
 
-if args.dataset == "sst5":
-    loader_f = load_sst5
-    args.num_classes = 5
+if args.dataset == "sst2":
+    loader_f = load_sst2
+    args.num_classes = 2
 else:
     raise Exception("Dataset is not available for usage with this script.")
 
@@ -56,6 +56,7 @@ model_dir = os.path.join(
 )
 os.makedirs(model_dir, exist_ok=True)
 
+all_thresholds = []
 test_acc, test_f1, test_recall, test_precision = [], [], [], []
 val_acc, val_f1, val_recall, val_precision = [], [], [], []
 for seed in range(args.num_seeds):
@@ -76,8 +77,8 @@ for seed in range(args.num_seeds):
     )
     
     # training setup is same as in sentence transformers library
+    best_epoch_idx, best_f1, best_model, best_threshold = 0, None, None, None
     for e in range(args.num_epochs):
-        best_epoch_idx, best_acc, best_model = e, None, None
         for *texts, score in tqdm(train_loader):
             tokenized_device = []
             for t in texts:
@@ -96,10 +97,15 @@ for seed in range(args.num_seeds):
             scheduler.step()
             optimizer.zero_grad()
 
-        acc, f1, recall, precision = model.validate(validation_loader, args.device)
-        if best_acc is None or acc > best_acc:
+        acc, f1, recall, precision, threshold = model.validate(validation_loader, args.device)
+
+        if best_threshold is None:
+            best_threshold = threshold
+
+        if best_f1 is None or f1 > best_f1:
             best_epoch_idx = e
-            best_optimized_metric = acc
+            best_optimized_metric = f1
+            best_threshold = threshold
             best_model = deepcopy(model.cpu())
             model.to(args.device)
 
@@ -118,9 +124,17 @@ for seed in range(args.num_seeds):
             os.path.join(model_dir, f"model_{formatted_time}_{args.dataset}.pt")
         )
 
+    print(f"Best epoch idx: {best_epoch_idx}\nBest threshold: {best_threshold}\nBest F1: {best_optimized_metric}")
+    all_thresholds.append(best_threshold)
     best_model = best_model.to(args.device)
 
-    test_acc_val, test_f1_val, test_recall_val, test_precision_val = model.validate(test_loader, args.device)
+    val_acc_val, val_f1_val, val_recall_val, val_precision_val, best_threshold  = model.validate(validation_loader, args.device)
+    val_acc.append(val_acc_val)
+    val_f1.append(val_f1_val)
+    val_recall.append(val_recall_val)
+    val_precision.append(val_precision_val)
+
+    test_acc_val, test_f1_val, test_recall_val, test_precision_val = model.validate(test_loader, args.device, best_threshold)
     test_acc.append(test_acc_val)
     test_f1.append(test_f1_val)
     test_recall.append(test_recall_val)
@@ -131,12 +145,6 @@ for seed in range(args.num_seeds):
     print(f" F1 score - {test_f1_val}")
     print(f"   Recall - {test_recall_val}")
     print(f"Precision - {test_precision_val}\n")
-
-    val_acc_val, val_f1_val, val_recall_val, val_precision_val  = model.validate(validation_loader, args.device)
-    val_acc.append(val_acc_val)
-    val_f1.append(val_f1_val)
-    val_recall.append(val_recall_val)
-    val_precision.append(val_precision_val)
     
 if args.save_results:
 
@@ -186,6 +194,7 @@ if args.save_results:
             "values_f1": test_f1,
             "values_recall": test_recall,
             "values_precision": test_precision,
+            "threshold": all_thresholds,
         }, f)
 
     
@@ -211,4 +220,5 @@ if args.save_results:
             "values_f1": val_f1,
             "values_recall": val_recall,
             "values_precision": val_precision,
+            "best_threshold": all_thresholds,
         }, f)

@@ -92,7 +92,7 @@ class Model(nn.Module):
         return self.forward_once(x)
 
     @torch.no_grad()
-    def validate(self, loader, device):
+    def validate(self, loader, device, threshold=None):
         self.model.eval()
         
         embeddings = torch.tensor([]).to(device)
@@ -108,34 +108,47 @@ class Model(nn.Module):
             embeddings = torch.cat((embeddings, out), axis=0)
             scores = torch.cat((scores, score), axis=0)
 
-        embeddings_np = embeddings.detach().cpu().numpy()
         scores_np = scores.detach().cpu().numpy()
 
         self.model.train()
-
-        if self.dataset in ["sst5"]:
-            preds = embeddings_np.argmax(axis=1).astype(np.int32)
-            scores_np = scores_np.astype(np.int32)
-
-            acc = accuracy_score(preds, scores_np)
-            f1 = f1_score(preds, scores_np, average="macro")
-            recall = recall_score(preds, scores_np, average="macro")
-            precision = precision_score(preds, scores_np, average="macro")
-            return acc, f1, recall, precision
         
-        elif self.dataset in ["mrpc"]:
-            preds = (embeddings_np > 0).astype(np.int32)
+        if self.dataset in ["mrpc", "sst2"]:
+            embeddings_np = embeddings.sigmoid().detach().cpu().numpy()
             scores_np = scores_np.astype(np.int32)
+
+            thresholds = [k*0.01 for k in range(1, 100)]
+
+            best_f1, acc, recall, prec = None, None, None, None
             
-            print(preds.shape, scores_np.shape)
-            print(preds)
-            print(scores_np)
+            if threshold is None:
 
-            acc = accuracy_score(preds, scores_np)
-            f1 = f1_score(preds, scores_np)
-            recall = recall_score(preds, scores_np)
-            precision = precision_score(preds, scores_np)
-            return acc, f1, recall, precision
+                # find best threshold
+                for t in thresholds:
+                    preds = (embeddings_np > t).astype(np.int32)
+
+                    acc_val = accuracy_score(scores_np, preds)
+                    f1_val = f1_score(scores_np, preds)
+                    recall_val = recall_score(scores_np, preds, zero_division=0.0)
+                    precision_val = precision_score(scores_np, preds, zero_division=0.0)
+
+                    if best_f1 is None or f1_val > best_f1:
+                        best_threshold = t
+                        best_f1 = f1_val
+                        acc = acc_val
+                        recall = recall_val
+                        prec = precision_val
+
+                print("Best threshold:",best_threshold)
+                return acc, best_f1, recall, prec, best_threshold
         
+            preds = (embeddings_np > threshold).astype(np.int32)
+            acc = accuracy_score(scores_np, preds)
+            f1 = f1_score(scores_np, preds)
+            recall = recall_score(scores_np, preds, zero_division=0.0)
+            prec = precision_score(scores_np, preds, zero_division=0.0)
+
+            return acc, f1, recall, prec
+
         else:
+            embeddings_np = embeddings.detach().cpu().numpy()
             return pearsonr(embeddings_np, scores_np)[0], spearmanr(embeddings_np, scores_np)[0]
