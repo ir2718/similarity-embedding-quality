@@ -118,6 +118,7 @@ for seed in range(args.num_seeds):
             os.path.join(model_dir, f"model_{formatted_time}.pt")
         )
 
+    print(f"Best epoch idx: {best_epoch_idx}")
     best_model = best_model.to(args.device)
 
     test_pearson, test_spearman = model.validate(test_loader, args.device)
