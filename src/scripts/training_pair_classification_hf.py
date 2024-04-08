@@ -195,6 +195,7 @@ if args.save_results:
             "values_recall": test_recall,
             "values_precision": test_precision,
             "threshold": all_thresholds,
+            "best_epoch_idx": best_epoch_idx,
         }, f)
 
     
@@ -221,4 +222,5 @@ if args.save_results:
             "values_recall": val_recall,
             "values_precision": val_precision,
             "best_threshold": all_thresholds,
+            "best_epoch_idx": best_epoch_idx,
         }, f)

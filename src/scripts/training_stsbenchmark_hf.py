@@ -174,6 +174,7 @@ if args.save_results:
             "stdev_cosine_pearson_test": stdev_cosine_pearson_test,
             "values_spearman": test_cosine_spearman,
             "values_pearson": test_cosine_pearson,
+            "best_epoch_idx": best_epoch_idx,
         }, f)
 
     
