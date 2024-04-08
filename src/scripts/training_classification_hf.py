@@ -19,7 +19,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
 parser.add_argument("--final_layer", default="final_linear", type=str) 
-parser.add_argument("--last_k_states", default=1, type=int)
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
 parser.add_argument("--test_batch_size", default=64, type=int)
@@ -37,9 +36,6 @@ parser.add_argument("--save_results", action="store_true")
 parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
-if args.last_k_states != 1 and args.pooling_fn not in ["mean", "weighted_mean", "cls", "max"]:
-    raise Exception("Using last k hidden states is permitted with mean, weighted mean, cls and max pooling.")
-
 if args.dataset == "sst2":
     loader_f = load_sst2
     args.num_classes = 2
@@ -52,7 +48,7 @@ model_dir = os.path.join(
     args.model_save_path, 
     args.model_name.replace('/', '-'),
     args.pooling_fn,
-    f"{args.starting_state}_to_{args.starting_state + args.last_k_states}"
+    f"{args.starting_state}_to_{args.starting_state + 1}"
 )
 os.makedirs(model_dir, exist_ok=True)
 
@@ -174,7 +170,7 @@ if args.save_results:
 
     json_res_path_test = os.path.join(
         model_dir, 
-        "test_results_" + 
+        "test_results" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             f"_{args.dataset}.json"
@@ -195,13 +191,12 @@ if args.save_results:
             "values_recall": test_recall,
             "values_precision": test_precision,
             "threshold": all_thresholds,
-            "best_epoch_idx": best_epoch_idx,
-        }, f)
+        }, f, indent=4)
 
     
     json_res_path_val = os.path.join(
         model_dir, 
-        "val_results_" + 
+        "val_results" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             f"_{args.dataset}.json"
@@ -222,5 +217,4 @@ if args.save_results:
             "values_recall": val_recall,
             "values_precision": val_precision,
             "best_threshold": all_thresholds,
-            "best_epoch_idx": best_epoch_idx,
-        }, f)
+        }, f, indent=4)

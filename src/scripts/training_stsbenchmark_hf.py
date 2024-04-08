@@ -17,9 +17,8 @@ from src.scripts.pooling_functions import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
-parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
+parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, max
 parser.add_argument("--final_layer", default="cosine", type=str) # cosine, manhattan, euclidean, dot
-parser.add_argument("--last_k_states", default=1, type=int)
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
 parser.add_argument("--test_batch_size", default=64, type=int)
@@ -38,9 +37,6 @@ parser.add_argument("--save_results", action="store_true")
 parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
-if args.last_k_states != 1 and args.pooling_fn not in ["mean", "weighted_mean", "cls", "max"]:
-    raise Exception("Using last k hidden states is permitted with mean, weighted mean, cls and max pooling.")
-
 if args.dataset == "stsb":
     loader_f = load_stsb
 elif args.dataset == "kor_sts":
@@ -58,7 +54,7 @@ model_dir = os.path.join(
     args.model_save_path, 
     args.model_name.replace('/', '-'),
     args.pooling_fn,
-    f"{args.starting_state}_to_{args.starting_state + args.last_k_states}"
+    f"{args.starting_state}_to_{args.starting_state + 1}"
 )
 os.makedirs(model_dir, exist_ok=True)
 
@@ -158,11 +154,10 @@ if args.save_results:
 
     json_res_path_test = os.path.join(
         model_dir, 
-        "test_results_" + 
+        "test_results" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             (path_to_add if args.model_load_path is not None else "") +
-            (f"_{args.loss_function}" if args.loss_function != "mse" else "") +
             ".json"
         )
 
@@ -174,17 +169,15 @@ if args.save_results:
             "stdev_cosine_pearson_test": stdev_cosine_pearson_test,
             "values_spearman": test_cosine_spearman,
             "values_pearson": test_cosine_pearson,
-            "best_epoch_idx": best_epoch_idx,
-        }, f)
+        }, f, indent=4)
 
     
     json_res_path_val = os.path.join(
         model_dir, 
-        "val_results_" + 
+        "val_results" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             (path_to_add if args.model_load_path is not None else "") +
-            (f"_{args.loss_function}" if args.loss_function != "mse" else "") +
             ".json"
         )
 
@@ -196,4 +189,4 @@ if args.save_results:
             "stdev_cosine_pearson_val": stdev_cosine_pearson_val,
             "values_spearman": val_cosine_spearman,
             "values_pearson": val_cosine_pearson,
-        }, f)
+        }, f, indent=4)

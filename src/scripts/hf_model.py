@@ -49,30 +49,18 @@ class Model(nn.Module):
                 self.model.config.hidden_size, 
                 args.num_classes-1 if args.num_classes == 2 else args.num_classes
             )
+        else:
+            self.final_layer = self.final_layer()
 
         self.dataset = args.dataset
         
         if args.pooling_fn == "mean":
-            self.pooling_fn = MeanPooling(args.last_k_states, args.starting_state)
-        if args.pooling_fn == "gem":
-            self.pooling_fn = GeMPooling(args.last_k_states, args.starting_state)
-        if args.pooling_fn == "max_mean":
-            self.pooling_fn = MaxMeanPooling(args.last_k_states, args.starting_state)
-        if args.pooling_fn == "norm_mean":
-            self.pooling_fn = NormMeanPooling(args.last_k_states, args.starting_state)
-        elif args.pooling_fn == "mean_self_attention":
-            self.pooling_fn = MeanSelfAttentionPooling(args.starting_state)
-        elif args.pooling_fn == "mean_encoder":
-            self.pooling_fn = MeanEncoderPooling(self.config, args.starting_state)
+            self.pooling_fn = MeanPooling(args.starting_state)
         elif args.pooling_fn == "max":
-            self.pooling_fn = MaxPooling(args.last_k_states, args.starting_state)
+            self.pooling_fn = MaxPooling(args.starting_state)
         elif args.pooling_fn == "cls":
-            self.pooling_fn = CLSPooling(args.last_k_states, args.starting_state)
-        elif args.pooling_fn == "weighted_mean":
-            self.pooling_fn = WeightedMeanPooling(self.config, args.last_k_states, args.starting_state)
-        elif args.pooling_fn == "weighted_per_component_mean":
-            self.pooling_fn = WeightedPerComponentMeanPooling(self.config, self.tokenizer)
-
+            self.pooling_fn = CLSPooling(args.starting_state)
+            
     def forward_once(self, inputs):
         out = self.model(**inputs, output_hidden_states=True)
         out_mean = self.pooling_fn(out, inputs["attention_mask"])
