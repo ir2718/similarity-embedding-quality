@@ -62,7 +62,7 @@ for seed in range(args.num_seeds):
     torch.manual_seed(seed)
     
     model = Model(args).to(args.device)
-    loss_f = nn.CrossEntropyLoss()
+    loss_f = nn.BCEWithLogitsLoss()
 
     optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
