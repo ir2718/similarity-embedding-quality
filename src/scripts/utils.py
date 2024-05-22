@@ -212,8 +212,8 @@ def remove_params_from_optimizer(model, weight_decay):
     ]
     return optimizer_grouped_parameters
 
-def log_eval_results(metrics, num_epochs):
-    print(f"Epoch {e+1}/{num_epochs}")
+def log_eval_results(metrics, epoch, num_epochs):
+    print(f"    Epoch {epoch+1}/{num_epochs}")
     for k, v in metrics.items():
         print(f"{k:20s} - {v}")
     print("\n")

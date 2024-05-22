@@ -122,7 +122,7 @@ for seed in range(args.num_seeds):
             model.to(args.device)
 
         print("============ VALIDATION ============")
-        log_eval_results(metrics, args.num_epochs)
+        log_eval_results(metrics, e, args.num_epochs)
     
     if args.save_model:
         current_time = datetime.now()
@@ -142,7 +142,7 @@ for seed in range(args.num_seeds):
     test_metrics.append(new_test_metric)
 
     print("============ TEST ============")
-    log_eval_results(metrics, args.num_epochs)
+    log_eval_results(new_test_metric, best_epoch_idx, args.num_epochs)
     
 if args.save_results:
 
