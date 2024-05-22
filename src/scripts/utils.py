@@ -7,6 +7,7 @@ import torch
 import gzip
 import csv
 import os
+import numpy as np
 
 def read_data(path, dataset_f, train_batch_size, test_batch_size, dataset_kwargs={}, sample_f=lambda x: x):
     train_samples = []
@@ -210,3 +211,32 @@ def remove_params_from_optimizer(model, weight_decay):
         },
     ]
     return optimizer_grouped_parameters
+
+def log_eval_results(metrics, num_epochs):
+    print(f"Epoch {e+1}/{num_epochs}")
+    for k, v in metrics.items():
+        print(f"{k:20s} - {v}")
+    print("\n")
+
+def create_json_dict(metrics_list, used_metric, postfix):
+    mean_dict = {f"mean_{used_metric}_{k}_{postfix}": None for k in metrics_list[0].keys()}
+    std_dict = {f"stdev_{used_metric}_{k}_{postfix}": None for k in metrics_list[0].keys()}
+    values_dict = {f"values_{k}": None for k in metrics_list[0].keys()}
+
+    for k in metrics_list[0].keys():
+        tmp = np.mean([tm[k] for tm in metrics_list])
+        mean_dict[f"mean_{used_metric}_{k}_{postfix}"] = tmp
+
+        tmp = np.std([tm[k] for tm in metrics_list], ddof=1)
+        std_dict[f"stdev_{used_metric}_{k}_{postfix}"] = tmp
+
+        tmp = [tm[k] for tm in metrics_list]
+        values_dict[f"values_{k}"] = tmp
+
+    merged_dict = {
+        **mean_dict,
+        **std_dict,
+        **values_dict
+    }
+
+    return merged_dict

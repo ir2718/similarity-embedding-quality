@@ -24,10 +24,6 @@ class DoubleModel(nn.Module):
         
         if args.pooling_fn == "mean":
             self.pooling_fn = MeanPooling(args.last_k_states, args.starting_state)
-        if args.pooling_fn == "norm_mean":
-            self.pooling_fn = NormMeanPooling(args.last_k_states, args.starting_state)
-        elif args.pooling_fn == "mean_self_attention":
-            self.pooling_fn = MeanSelfAttentionPooling(args.starting_state)
         elif args.pooling_fn == "max":
             self.pooling_fn = MaxPooling(args.last_k_states, args.starting_state)
         elif args.pooling_fn == "cls":

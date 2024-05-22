@@ -17,16 +17,17 @@ from src.scripts.pooling_functions import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
-parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, weighted_mean, weighted_per_component_mean
-parser.add_argument("--final_layer", default="final_linear", type=str) 
+parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, max
+parser.add_argument("--final_layer", default="cosine", type=str) 
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
 parser.add_argument("--test_batch_size", default=64, type=int)
-parser.add_argument("--lr", default=2e-5, type=float)
+parser.add_argument("--lr", default=2e-6, type=float)
 parser.add_argument("--weight_decay", default=1e-2, type=float)
 parser.add_argument("--max_grad_norm", default=1.0, type=float)
 parser.add_argument("--unsupervised", action="store_true")
-parser.add_argument("--dataset", type=str, default="sst2") # sst2
+parser.add_argument("--dataset", type=str, default="stsb") # stsb, mrpc, sst2
+parser.add_argument("--best_metric_str", type=str, default="spearman") # spearman, mean_ap, mrr
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_load_path", default=None, type=str)
@@ -36,9 +37,25 @@ parser.add_argument("--save_results", action="store_true")
 parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
-if args.dataset == "sst2":
-    loader_f = load_sst2
+# sentence pair classification dataset
+if args.dataset == "mrpc":
+    loader_f = load_mrpc
     args.num_classes = 2
+
+# reranking / retrieval dataset
+elif args.dataset == "something":
+    # TODO add this part
+    loader_f = ...
+
+# STS datasets
+elif args.dataset == "stsb":
+    loader_f = load_stsb
+elif args.dataset == "kor_sts":
+    loader_f = load_kor_sts
+elif args.dataset == "spanish_sts":
+    loader_f = load_spanish_sts
+elif args.dataset == "german_sts":
+    loader_f = load_german_sts
 else:
     raise Exception("Dataset is not available for usage with this script.")
 
@@ -52,9 +69,8 @@ model_dir = os.path.join(
 )
 os.makedirs(model_dir, exist_ok=True)
 
-all_thresholds = []
-test_acc, test_f1, test_recall, test_precision = [], [], [], []
-val_acc, val_f1, val_recall, val_precision = [], [], [], []
+test_metrics = []
+val_metrics = []
 for seed in range(args.num_seeds):
     logging.info("##### Seed {} #####".format(seed))
     random.seed(seed)
@@ -62,7 +78,11 @@ for seed in range(args.num_seeds):
     torch.manual_seed(seed)
     
     model = Model(args).to(args.device)
-    loss_f = nn.BCEWithLogitsLoss()
+
+    if args.dataset in ["mrpc","sst2"]:
+        loss_f = nn.BCEWithLogitsLoss()
+    elif args.dataset in ["stsb"]:
+        loss_f = nn.MSELoss()
 
     optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
@@ -73,7 +93,7 @@ for seed in range(args.num_seeds):
     )
     
     # training setup is same as in sentence transformers library
-    best_epoch_idx, best_f1, best_model, best_threshold = 0, None, None, None
+    best_epoch_idx, best_metric, best_model = 0, None, None
     for e in range(args.num_epochs):
         for *texts, score in tqdm(train_loader):
             tokenized_device = []
@@ -93,24 +113,16 @@ for seed in range(args.num_seeds):
             scheduler.step()
             optimizer.zero_grad()
 
-        acc, f1, recall, precision, threshold = model.validate(validation_loader, args.device)
+        metrics = model.validate(validation_loader, args.device)
 
-        if best_threshold is None:
-            best_threshold = threshold
-
-        if best_f1 is None or f1 > best_f1:
+        if best_metric is None or metrics[args.best_metric_str] > best_metric:
             best_epoch_idx = e
-            best_optimized_metric = f1
-            best_threshold = threshold
+            best_optimized_metric = metrics[args.best_metric_str]
             best_model = deepcopy(model.cpu())
             model.to(args.device)
 
         print("============ VALIDATION ============")
-        print(f"Epoch {e+1}/{args.num_epochs}")
-        print(f" Accuracy - {acc}")
-        print(f" F1 score - {f1}")
-        print(f"   Recall - {recall}")
-        print(f"Precision - {precision}\n")
+        log_eval_results(metrics, args.num_epochs)
     
     if args.save_model:
         current_time = datetime.now()
@@ -120,54 +132,21 @@ for seed in range(args.num_seeds):
             os.path.join(model_dir, f"model_{formatted_time}_{args.dataset}.pt")
         )
 
-    print(f"Best epoch idx: {best_epoch_idx}\nBest threshold: {best_threshold}\nBest F1: {best_optimized_metric}")
-    all_thresholds.append(best_threshold)
+    print(f"Best epoch idx: {best_epoch_idx}\nBest metric: {best_optimized_metric}")
     best_model = best_model.to(args.device)
 
-    val_acc_val, val_f1_val, val_recall_val, val_precision_val, best_threshold  = model.validate(validation_loader, args.device)
-    val_acc.append(val_acc_val)
-    val_f1.append(val_f1_val)
-    val_recall.append(val_recall_val)
-    val_precision.append(val_precision_val)
+    new_val_metric = model.validate(validation_loader, args.device)
+    val_metrics.append(new_val_metric)
 
-    test_acc_val, test_f1_val, test_recall_val, test_precision_val = model.validate(test_loader, args.device, best_threshold)
-    test_acc.append(test_acc_val)
-    test_f1.append(test_f1_val)
-    test_recall.append(test_recall_val)
-    test_precision.append(test_precision_val)
+    new_test_metric = model.validate(test_loader, args.device)
+    test_metrics.append(new_test_metric)
 
     print("============ TEST ============")
-    print(f" Accuracy - {test_acc_val}")
-    print(f" F1 score - {test_f1_val}")
-    print(f"   Recall - {test_recall_val}")
-    print(f"Precision - {test_precision_val}\n")
+    log_eval_results(metrics, args.num_epochs)
     
 if args.save_results:
 
-    mean_acc_test = np.mean(test_acc)
-    stdev_acc_test = np.std(test_acc, ddof=1)
-
-    mean_f1_test = np.mean(test_f1)
-    stdev_f1_test = np.std(test_f1, ddof=1)
-
-    mean_recall_test = np.mean(test_recall)
-    stdev_recall_test = np.std(test_recall, ddof=1)
-
-    mean_precision_test = np.mean(test_precision)
-    stdev_precision_test = np.std(test_precision, ddof=1)
-
-    mean_acc_val = np.mean(val_acc)
-    stdev_acc_val = np.std(val_acc, ddof=1)
-
-    mean_f1_val = np.mean(val_f1)
-    stdev_f1_val = np.std(val_f1, ddof=1)
-
-    mean_recall_val = np.mean(val_recall)
-    stdev_recall_val = np.std(val_recall, ddof=1)
-
-    mean_precision_val = np.mean(val_precision)
-    stdev_precision_val = np.std(val_precision, ddof=1)
-
+    test_json = create_json_dict(test_metrics, args.final_layer, "test") 
     json_res_path_test = os.path.join(
         model_dir, 
         "test_results" + 
@@ -175,25 +154,11 @@ if args.save_results:
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             f"_{args.dataset}.json"
         )
-
     with open(json_res_path_test, "w") as f:
-        json.dump({
-            "mean_acc_test": mean_acc_test,
-            "stdev_acc_test": stdev_acc_test,
-            "mean_f1_test": mean_f1_test,
-            "stdev_f1_test": stdev_f1_test,
-            "mean_recall_test": mean_recall_test,
-            "stdev_recall_test": stdev_recall_test,
-            "mean_precision_test": mean_precision_test,
-            "stdev_precision_test": stdev_precision_test,
-            "values_acc": test_acc,
-            "values_f1": test_f1,
-            "values_recall": test_recall,
-            "values_precision": test_precision,
-            "threshold": all_thresholds,
-        }, f, indent=4)
+        json.dump(test_json, f, indent=4)
 
-    
+
+    val_json = create_json_dict(val_metrics, args.final_layer, "val")
     json_res_path_val = os.path.join(
         model_dir, 
         "val_results" + 
@@ -201,20 +166,5 @@ if args.save_results:
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             f"_{args.dataset}.json"
         )
-
     with open(json_res_path_val, "w") as f:
-        json.dump({
-            "mean_acc_val": mean_acc_val,
-            "stdev_acc_val": stdev_acc_val,
-            "mean_f1_val": mean_f1_val,
-            "stdev_f1_val": stdev_f1_val,
-            "mean_recall_val": mean_recall_val,
-            "stdev_recall_val": stdev_recall_val,
-            "mean_precision_val": mean_precision_val,
-            "stdev_precision_val": stdev_precision_val,
-            "values_acc": val_acc,
-            "values_f1": val_f1,
-            "values_recall": val_recall,
-            "values_precision": val_precision,
-            "best_threshold": all_thresholds,
-        }, f, indent=4)
+        json.dump(val_json, f, indent=4)

@@ -6,6 +6,7 @@ from tqdm import tqdm
 from scipy.stats import pearsonr, spearmanr
 from src.scripts.final_layers import *
 from safetensors.torch import load_file
+from src.scripts.evaluators import STSEvaluator, SentencePairEvaluator
 from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
 import numpy as np
 
@@ -51,8 +52,6 @@ class Model(nn.Module):
             )
         else:
             self.final_layer = self.final_layer()
-
-        self.dataset = args.dataset
         
         if args.pooling_fn == "mean":
             self.pooling_fn = MeanPooling(args.starting_state)
@@ -60,7 +59,15 @@ class Model(nn.Module):
             self.pooling_fn = MaxPooling(args.starting_state)
         elif args.pooling_fn == "cls":
             self.pooling_fn = CLSPooling(args.starting_state)
-            
+
+        self.dataset = args.dataset
+
+        ## TODO change datasets
+        if self.dataset in ["mrpc", "sst2"]:
+            self.evaluator = SentencePairEvaluator()
+        elif self.dataset in ["stsb"]:
+            self.evaluator = STSEvaluator()
+
     def forward_once(self, inputs):
         out = self.model(**inputs, output_hidden_states=True)
         out_mean = self.pooling_fn(out, inputs["attention_mask"])
@@ -80,7 +87,7 @@ class Model(nn.Module):
         return self.forward_once(x)
 
     @torch.no_grad()
-    def validate(self, loader, device, threshold=None):
+    def validate(self, loader, device):
         self.model.eval()
         
         embeddings = torch.tensor([]).to(device)
@@ -100,43 +107,4 @@ class Model(nn.Module):
 
         self.model.train()
         
-        if self.dataset in ["mrpc", "sst2"]:
-            embeddings_np = embeddings.sigmoid().detach().cpu().numpy()
-            scores_np = scores_np.astype(np.int32)
-
-            thresholds = [k*0.01 for k in range(1, 100)]
-
-            best_f1, acc, recall, prec = None, None, None, None
-            
-            if threshold is None:
-
-                # find best threshold
-                for t in thresholds:
-                    preds = (embeddings_np > t).astype(np.int32)
-
-                    acc_val = accuracy_score(scores_np, preds)
-                    f1_val = f1_score(scores_np, preds)
-                    recall_val = recall_score(scores_np, preds, zero_division=0.0)
-                    precision_val = precision_score(scores_np, preds, zero_division=0.0)
-
-                    if best_f1 is None or f1_val > best_f1:
-                        best_threshold = t
-                        best_f1 = f1_val
-                        acc = acc_val
-                        recall = recall_val
-                        prec = precision_val
-
-                print("Best threshold:",best_threshold)
-                return acc, best_f1, recall, prec, best_threshold
-        
-            preds = (embeddings_np > threshold).astype(np.int32)
-            acc = accuracy_score(scores_np, preds)
-            f1 = f1_score(scores_np, preds)
-            recall = recall_score(scores_np, preds, zero_division=0.0)
-            prec = precision_score(scores_np, preds, zero_division=0.0)
-
-            return acc, f1, recall, prec
-
-        else:
-            embeddings_np = embeddings.detach().cpu().numpy()
-            return pearsonr(embeddings_np, scores_np)[0], spearmanr(embeddings_np, scores_np)[0]
+        return self.evaluator(embeddings, scores_np)
