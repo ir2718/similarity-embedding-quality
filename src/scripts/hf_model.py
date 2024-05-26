@@ -38,11 +38,7 @@ class Model(nn.Module):
 
         final_layer_dict = {
             "cosine": CosineSimilarity,
-            "manhattan": ManhattanSimilarity,
-            "euclidean": EuclideanSimilarity,
-            "dot": DotProductSimilarity,
-            "final_linear": FinalLinear,
-            "diff_concatenation": DifferenceConcatenation
+            # "dot": DotProductSimilarity,
         }
         self.final_layer = final_layer_dict[args.final_layer]
         if args.final_layer in ["final_linear", "diff_concatenation"]:
@@ -63,7 +59,7 @@ class Model(nn.Module):
         self.dataset = args.dataset
 
         ## TODO change datasets
-        if self.dataset in ["mrpc", "sst2"]:
+        if self.dataset in ["mrpc"]:
             self.evaluator = SentencePairEvaluator()
         elif self.dataset in ["stsb"]:
             self.evaluator = STSEvaluator()
@@ -73,9 +69,9 @@ class Model(nn.Module):
         out_mean = self.pooling_fn(out, inputs["attention_mask"])
         return out_mean
 
-    def forward(self, text):
+    def forward(self, text, pairwise=False):
         outs = [self.forward_once(x) for x in text]
-        final_out = self.final_layer(*outs)
+        final_out = self.final_layer(*outs, pairwise=pairwise)
         if len(final_out.shape) == 2 and final_out.shape[1] == 1:
             return final_out.reshape(-1)
         return final_out

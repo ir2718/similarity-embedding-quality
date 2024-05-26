@@ -11,6 +11,7 @@ import argparse
 from datetime import datetime
 from tqdm import tqdm
 from copy import deepcopy
+from torch.nn.functional import cross_entropy
 from src.scripts.hf_model import Model
 from src.scripts.utils import *
 from src.scripts.pooling_functions import *
@@ -27,7 +28,7 @@ parser.add_argument("--weight_decay", default=1e-2, type=float)
 parser.add_argument("--max_grad_norm", default=1.0, type=float)
 parser.add_argument("--unsupervised", action="store_true")
 parser.add_argument("--dataset", type=str, default="stsb") # stsb, mrpc, sst2
-parser.add_argument("--best_metric_str", type=str, default="spearman") # spearman, mean_ap, mrr
+parser.add_argument("--best_metric_str", type=str, default="spearman") # spearman, map, mrr
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_load_path", default=None, type=str)
@@ -40,12 +41,10 @@ args = parser.parse_args()
 # sentence pair classification dataset
 if args.dataset == "mrpc":
     loader_f = load_mrpc
-    args.num_classes = 2
 
-# reranking / retrieval dataset
-elif args.dataset == "something":
-    # TODO add this part
-    loader_f = ...
+# retrieval dataset
+elif args.dataset == "scifact":
+    loader_f = load_fever
 
 # STS datasets
 elif args.dataset == "stsb":
@@ -79,10 +78,20 @@ for seed in range(args.num_seeds):
     
     model = Model(args).to(args.device)
 
-    if args.dataset in ["mrpc","sst2"]:
+    if args.dataset in ["mrpc"]:
         loss_f = nn.BCEWithLogitsLoss()
+        pairwise = False
     elif args.dataset in ["stsb"]:
         loss_f = nn.MSELoss()
+        pairwise = False
+    elif args.dataset in ["scifact"]:
+        def mnrl_loss(scores, labels):
+            labels = torch.tensor(
+                range(len(scores)), dtype=torch.long, device=scores.device
+            )  # Example a[i] should match with b[i]
+            return cross_entropy(scores, labels)
+        loss_f = mnrl_loss
+        pairwise = True
 
     optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
@@ -103,7 +112,7 @@ for seed in range(args.num_seeds):
                 tokenized_device.append(tok_text_device)
             score = score.to(args.device)
 
-            out = model.forward(tokenized_device)
+            out = model.forward(tokenized_device, pairwise)
 
             loss = loss_f(out, score)
             loss.backward()

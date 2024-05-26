@@ -2,45 +2,18 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 
-class EuclideanSimilarity(nn.Module):
+# class DotProductSimilarity(nn.Module):
 
-    def forward(self, out1, out2):
-        return 1/(1 + torch.sum((out1 - out2)**2, dim=1))
-
-class ManhattanSimilarity(nn.Module):
-
-    def forward(self, out1, out2):
-        return 1/(1 + torch.abs(out1 - out2).sum(dim=1))
-
-class DotProductSimilarity(nn.Module):
-
-    def forward(self, out1, out2):
-        return (out1 * out2).sum(dim=1)
+#     def forward(self, out1, out2, pairwise):
+#         return (out1 * out2).sum(dim=1)
     
 class CosineSimilarity(nn.Module):
 
-    def forward(self, out1, out2):
-        out_1_norm = F.normalize(out1, p=2.0, dim=1)
-        out_2_norm = F.normalize(out2, p=2.0, dim=1)
-        return (out_1_norm * out_2_norm).sum(dim=1)
+    def forward(self, out1, out2, pairwise):
+        out_1_norm = F.normalize(out1, p=2.0, dim=-1)
+        out_2_norm = F.normalize(out2, p=2.0, dim=-1)
 
-class FinalLinear(nn.Module):
+        if pairwise:
+            return torch.mm(out_1_norm, out_2_norm.T)
 
-    def __init__(self, hidden_size, num_classes):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.linear = nn.Linear(hidden_size, num_classes, bias=True)
-
-    def forward(self, out1):
-        return self.linear(out1)
-
-class DifferenceConcatenation(nn.Module):
-
-    def __init__(self, hidden_size, num_classes):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.linear = nn.Linear(hidden_size * 3, num_classes, bias=True)
-
-    def forward(self, out1, out2):
-        concatenation = torch.cat((out1, out2, torch.abs(out1 - out2)), dim=1)
-        return self.linear(concatenation)
+        return (out_1_norm * out_2_norm).sum(dim=-1)

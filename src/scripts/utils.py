@@ -8,6 +8,10 @@ import gzip
 import csv
 import os
 import numpy as np
+from tqdm import tqdm
+import pathlib
+import beir.util as beir_util
+from beir.datasets.data_loader import GenericDataLoader
 
 def read_data(path, dataset_f, train_batch_size, test_batch_size, dataset_kwargs={}, sample_f=lambda x: x):
     train_samples = []
@@ -76,22 +80,48 @@ class BaseDataset(Dataset):
     def __len__(self):
         return len(self.s1)
 
-def load_sst2(train_batch_size, test_batch_size):
-    data = datasets.load_dataset("SetFit/sst2")
-    columns = ["text", "label"]
+class RetrievalDataset(Dataset):
+    
+    def __init__(self, corpus, queries, mapping):
+        self.q, self.d = [], []
+        self.scores = []
+        for query_id, doc_ids in tqdm(mapping.items()):
+            query_text = queries[query_id]
 
-    train = data["train"].to_pandas()[columns].values.tolist()
-    val = data["validation"].to_pandas()[columns].values.tolist()
-    test = data["test"].to_pandas()[columns].values.tolist()
+            for d_id, s in doc_ids.items():
+                doc_text = corpus[d_id]["title"] + " " + corpus[d_id]["text"] 
 
-    train_dataset = BaseDataset(train)
-    val_dataset = BaseDataset(val)
-    test_dataset = BaseDataset(test)
+                self.q.append(query_text)
+                self.d.append(doc_text)
+                self.scores.append(s)
+
+    def __getitem__(self, idx):
+        return (self.q[idx], self.d[idx], torch.tensor(self.scores[idx], dtype=torch.float32))
+    
+    def __len__(self):
+        return len(self.q)
+
+
+def load_fever(train_batch_size, test_batch_size):
+    dataset = "nfcorpus"
+
+    url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(dataset)
+    out_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), "datasets")
+    data_path = beir_util.download_and_unzip(url, out_dir)
+
+    train_corpus, train_queries, train_mapping = GenericDataLoader(data_folder=data_path).load(split="train")
+    dev_corpus, dev_queries, dev_mapping = GenericDataLoader(data_folder=data_path).load(split="dev")
+    test_corpus, test_queries, test_mapping = GenericDataLoader(data_folder=data_path).load(split="test")
+
+    train_dataset = RetrievalDataset(train_corpus, train_queries, train_mapping)
+    dev_dataset = RetrievalDataset(dev_corpus, dev_queries, dev_mapping)
+    test_dataset = RetrievalDataset(test_corpus, test_queries, test_mapping)
 
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=test_batch_size)
+    val_loader = DataLoader(dev_dataset, batch_size=test_batch_size)
     test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
     return train_loader, val_loader, test_loader
+
     
 def load_mrpc(train_batch_size, test_batch_size):
     data = datasets.load_dataset("SetFit/mrpc")
