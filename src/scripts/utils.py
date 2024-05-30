@@ -102,25 +102,25 @@ class RetrievalDataset(Dataset):
         return len(self.q)
 
 
-def load_fever(train_batch_size, test_batch_size):
-    dataset = "nfcorpus"
+def load_scifact(train_batch_size, test_batch_size):
+    dataset = "scifact"
 
     url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(dataset)
     out_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), "datasets")
     data_path = beir_util.download_and_unzip(url, out_dir)
 
     train_corpus, train_queries, train_mapping = GenericDataLoader(data_folder=data_path).load(split="train")
-    dev_corpus, dev_queries, dev_mapping = GenericDataLoader(data_folder=data_path).load(split="dev")
+    # dev_corpus, dev_queries, dev_mapping = GenericDataLoader(data_folder=data_path).load(split="dev")
     test_corpus, test_queries, test_mapping = GenericDataLoader(data_folder=data_path).load(split="test")
 
     train_dataset = RetrievalDataset(train_corpus, train_queries, train_mapping)
-    dev_dataset = RetrievalDataset(dev_corpus, dev_queries, dev_mapping)
+    # dev_dataset = RetrievalDataset(dev_corpus, dev_queries, dev_mapping)
     test_dataset = RetrievalDataset(test_corpus, test_queries, test_mapping)
 
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
-    val_loader = DataLoader(dev_dataset, batch_size=test_batch_size)
+    # val_loader = DataLoader(dev_dataset, batch_size=test_batch_size)
     test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
-    return train_loader, val_loader, test_loader
+    return train_loader, train_loader, test_loader
 
     
 def load_mrpc(train_batch_size, test_batch_size):
