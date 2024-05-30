@@ -38,16 +38,8 @@ class Model(nn.Module):
 
         final_layer_dict = {
             "cosine": CosineSimilarity,
-            # "dot": DotProductSimilarity,
         }
-        self.final_layer = final_layer_dict[args.final_layer]
-        if args.final_layer in ["final_linear", "diff_concatenation"]:
-            self.final_layer = self.final_layer(
-                self.model.config.hidden_size, 
-                args.num_classes-1 if args.num_classes == 2 else args.num_classes
-            )
-        else:
-            self.final_layer = self.final_layer()
+        self.final_layer = final_layer_dict[args.final_layer]()
         
         if args.pooling_fn == "mean":
             self.pooling_fn = MeanPooling(args.starting_state)
@@ -69,9 +61,9 @@ class Model(nn.Module):
         out_mean = self.pooling_fn(out, inputs["attention_mask"])
         return out_mean
 
-    def forward(self, text, pairwise=False):
+    def forward(self, text):
         outs = [self.forward_once(x) for x in text]
-        final_out = self.final_layer(*outs, pairwise=pairwise)
+        final_out = self.final_layer(*outs)
         if len(final_out.shape) == 2 and final_out.shape[1] == 1:
             return final_out.reshape(-1)
         return final_out

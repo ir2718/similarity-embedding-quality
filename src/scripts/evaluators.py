@@ -11,7 +11,18 @@ class STSEvaluator:
             "pearson": pearsonr(embeddings_np, labels)[0]
         }
 
+    def test_mode(self):
+        pass
+
 class SentencePairEvaluator:
+
+    def __init__(self):
+        self.best_mean_ap = None
+        self.best_f1 = None
+        self.best_f1_threshold = None
+        self.best_acc = None
+        self.best_acc_threshold = None
+        self.test = False
 
     def __call__(self, embeddings, labels):
         embeddings_np = embeddings.sigmoid().detach().cpu().numpy()
@@ -19,8 +30,25 @@ class SentencePairEvaluator:
 
         mean_ap = average_precision_score(labels, embeddings_np)
 
-        acc, _ = SentencePairEvaluator.find_best_acc_and_threshold(embeddings_np, labels, True)
-        f1, precision, recall, _ = SentencePairEvaluator.find_best_f1_and_threshold(embeddings_np, labels, True)
+        if not self.test:
+            acc, best_acc_threshold = SentencePairEvaluator.find_best_acc_and_threshold(embeddings_np, labels, True)
+            f1, precision, recall, best_f1_threshold = SentencePairEvaluator.find_best_f1_and_threshold(embeddings_np, labels, True)
+
+            if self.best_mean_ap is None or mean_ap > self.best_mean_ap:
+                self.best_mean_ap = mean_ap
+            
+                self.best_f1 = f1
+                self.best_f1_threshold = best_f1_threshold
+
+                self.best_acc = acc
+                self.best_acc_threshold = best_acc_threshold
+
+        else:
+            # in test mode the best threshold are used
+            acc = accuracy_score(labels, embeddings_np > self.best_acc_threshold)
+            f1 = f1_score(labels, embeddings_np > self.best_f1_threshold)
+            recall = recall_score(labels, embeddings_np > self.best_f1_threshold, zero_division=0.0)
+            precision = precision_score(labels, embeddings_np > self.best_f1_threshold, zero_division=0.0)
 
         return {
             "map": mean_ap,
@@ -29,6 +57,9 @@ class SentencePairEvaluator:
             "recall": recall,
             "precision": precision
         }
+
+    def test_mode(self):
+        self.test = True
 
     # taken from https://github.com/embeddings-benchmark/mteb/blob/main/mteb/evaluation/evaluators/PairClassificationEvaluator.py
     @staticmethod

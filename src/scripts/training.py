@@ -27,8 +27,8 @@ parser.add_argument("--lr", default=2e-5, type=float)
 parser.add_argument("--weight_decay", default=1e-2, type=float)
 parser.add_argument("--max_grad_norm", default=1.0, type=float)
 parser.add_argument("--unsupervised", action="store_true")
-parser.add_argument("--dataset", type=str, default="stsb") # stsb, mrpc, sst2
-parser.add_argument("--best_metric_str", type=str, default="spearman") # spearman, map, mrr
+parser.add_argument("--dataset", type=str, default="stsb") # stsb, mrpc
+parser.add_argument("--best_metric_str", type=str, default="spearman") # spearman, map
 parser.add_argument("--num_epochs", default=10, type=int)
 parser.add_argument("--num_seeds", default=5, type=int)
 parser.add_argument("--model_load_path", default=None, type=str)
@@ -43,10 +43,6 @@ if args.dataset == "mrpc":
     loader_f = load_mrpc
     if args.best_metric_str == "spearman":
         args.best_metric_str = "map"
-
-# retrieval dataset
-elif args.dataset == "scifact":
-    loader_f = load_scifact
 
 # STS datasets
 elif args.dataset == "stsb":
@@ -82,18 +78,8 @@ for seed in range(args.num_seeds):
 
     if args.dataset in ["mrpc"]:
         loss_f = nn.BCEWithLogitsLoss()
-        pairwise = False
     elif args.dataset in ["stsb"]:
         loss_f = nn.MSELoss()
-        pairwise = False
-    elif args.dataset in ["scifact"]:
-        def mnrl_loss(scores, labels):
-            labels = torch.tensor(
-                range(len(scores)), dtype=torch.long, device=scores.device
-            )  # Example a[i] should match with b[i]
-            return cross_entropy(scores, labels)
-        loss_f = mnrl_loss
-        pairwise = True
 
     optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
@@ -114,7 +100,7 @@ for seed in range(args.num_seeds):
                 tokenized_device.append(tok_text_device)
             score = score.to(args.device)
 
-            out = model.forward(tokenized_device, pairwise)
+            out = model.forward(tokenized_device)
 
             loss = loss_f(out, score)
             loss.backward()
@@ -145,6 +131,8 @@ for seed in range(args.num_seeds):
 
     print(f"Best epoch idx: {best_epoch_idx}\nBest metric: {best_optimized_metric}")
     best_model = best_model.to(args.device)
+
+    best_model.evaluator.test_mode()
 
     new_val_metric = model.validate(validation_loader, args.device)
     val_metrics.append(new_val_metric)
