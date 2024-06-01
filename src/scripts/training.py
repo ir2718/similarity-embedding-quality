@@ -90,7 +90,7 @@ for seed in range(args.num_seeds):
     )
     
     # training setup is same as in sentence transformers library
-    best_epoch_idx, best_metric, best_model = 0, None, None
+    best_epoch_idx, best_optimized_metric, best_model = 0, None, None
     for e in range(args.num_epochs):
         for *texts, score in tqdm(train_loader):
             tokenized_device = []
@@ -112,9 +112,10 @@ for seed in range(args.num_seeds):
 
         metrics = model.validate(validation_loader, args.device)
 
-        if best_metric is None or metrics[args.best_metric_str] > best_metric:
+        if best_optimized_metric is None or metrics[args.best_metric_str] > best_optimized_metric:
             best_epoch_idx = e
             best_optimized_metric = metrics[args.best_metric_str]
+            print(best_epoch_idx, best_optimized_metric)
             best_model = deepcopy(model.cpu())
             model.to(args.device)
 
@@ -134,10 +135,10 @@ for seed in range(args.num_seeds):
 
     best_model.evaluator.test_mode()
 
-    new_val_metric = model.validate(validation_loader, args.device)
+    new_val_metric = best_model.validate(validation_loader, args.device)
     val_metrics.append(new_val_metric)
 
-    new_test_metric = model.validate(test_loader, args.device)
+    new_test_metric = best_model.validate(test_loader, args.device)
     test_metrics.append(new_test_metric)
 
     print("============ TEST ============")
