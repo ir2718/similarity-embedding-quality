@@ -146,12 +146,21 @@ for seed in range(args.num_seeds):
     
 if args.save_results:
 
+    if args.model_load_path is not None:
+        if "dapt" in args.model_load_path:
+            path_to_add = f"_{'_'.join(args.model_load_path.split('/')[2:]).split('.')[0]}"
+        else:
+            path_to_add = "_".join(args.model_load_path.split('/')[-4].split("_")[1:])
+    else:
+        path_to_add = ""
+
     test_json = create_json_dict(test_metrics, args.final_layer, "test") 
     json_res_path_test = os.path.join(
         model_dir, 
         "test_results" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
+            (path_to_add if args.model_load_path is not None else "") +
             f"_{args.dataset}.json"
         )
     with open(json_res_path_test, "w") as f:
@@ -164,6 +173,7 @@ if args.save_results:
         "val_results" + 
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
+            (path_to_add if args.model_load_path is not None else "") +
             f"_{args.dataset}.json"
         )
     with open(json_res_path_val, "w") as f:
