@@ -124,3 +124,56 @@ class SentencePairEvaluator:
                     threshold = (rows[i][0] + rows[i + 1][0]) / 2
 
         return best_f1, best_precision, best_recall, threshold
+    
+
+class NLIEvaluator:
+
+    def __init__(self):
+        self.best_f1 = None
+        self.best_f1_threshold = None
+        self.best_acc = None
+        self.best_acc_threshold = None
+        self.test = False
+
+    def __call__(self, embeddings, labels):
+        labels = labels.astype(np.int32)
+
+        if len(embeddings.shape) == 2 and embeddings.shape[1] == 3:
+            embeddings_np = embeddings.argmax(axis=1).detach().cpu().numpy()
+
+            acc = accuracy_score(labels, embeddings_np)
+            f1 = f1_score(labels, embeddings_np, average="macro")
+            recall = recall_score(labels, embeddings_np, average="macro", zero_division=0.0)
+            precision = precision_score(labels, embeddings_np, average="macro", zero_division=0.0)
+        
+        else:
+            embeddings_np = embeddings.sigmoid().detach().cpu().numpy()
+
+            # use thresholding in case of binary
+            if not self.test:
+                acc, best_acc_threshold = SentencePairEvaluator.find_best_acc_and_threshold(embeddings_np, labels, True)
+                f1, precision, recall, best_f1_threshold = SentencePairEvaluator.find_best_f1_and_threshold(embeddings_np, labels, True)
+
+                if self.best_f1 is None or f1 > self.best_f1:
+                    self.best_f1 = f1
+                    self.best_f1_threshold = best_f1_threshold
+
+                    self.best_acc = acc
+                    self.best_acc_threshold = best_acc_threshold
+
+            else:
+                # in test mode the best threshold are used
+                acc = accuracy_score(labels, embeddings_np > self.best_acc_threshold)
+                f1 = f1_score(labels, embeddings_np > self.best_f1_threshold)
+                recall = recall_score(labels, embeddings_np > self.best_f1_threshold, zero_division=0.0)
+                precision = precision_score(labels, embeddings_np > self.best_f1_threshold, zero_division=0.0)
+
+        return {
+            "acc": acc,
+            "f1": f1,
+            "recall": recall,
+            "precision": precision
+        }
+
+    def test_mode(self):
+        self.test = True

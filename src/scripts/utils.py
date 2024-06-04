@@ -61,7 +61,7 @@ class BaseDataset(Dataset):
                     self.scores.append(score)
                 else:
                     self.scores.append(float(score) / scale)
-            self.dtype = torch.float32
+            self.dtype = torch.float32 if len(set(self.scores)) != 3 else torch.long
         else:
             self.s1, self.s2, self.scores = [], [], []
             for s1, score in samples:
@@ -79,49 +79,82 @@ class BaseDataset(Dataset):
 
     def __len__(self):
         return len(self.s1)
-
-class RetrievalDataset(Dataset):
     
-    def __init__(self, corpus, queries, mapping):
-        self.q, self.d = [], []
-        self.scores = []
-        for query_id, doc_ids in tqdm(mapping.items()):
-            query_text = queries[query_id]
+# def load_scifact(train_batch_size, test_batch_size):
+#     dataset = "scifact"
 
-            for d_id, s in doc_ids.items():
-                doc_text = corpus[d_id]["title"] + " " + corpus[d_id]["text"] 
+#     url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(dataset)
+#     out_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), "datasets")
+#     data_path = beir_util.download_and_unzip(url, out_dir)
 
-                self.q.append(query_text)
-                self.d.append(doc_text)
-                self.scores.append(s)
+#     train_corpus, train_queries, train_mapping = GenericDataLoader(data_folder=data_path).load(split="train")
+#     # dev_corpus, dev_queries, dev_mapping = GenericDataLoader(data_folder=data_path).load(split="dev")
+#     test_corpus, test_queries, test_mapping = GenericDataLoader(data_folder=data_path).load(split="test")
 
-    def __getitem__(self, idx):
-        return (self.q[idx], self.d[idx], torch.tensor(self.scores[idx], dtype=torch.float32))
-    
-    def __len__(self):
-        return len(self.q)
+#     train_dataset = RetrievalDataset(train_corpus, train_queries, train_mapping)
+#     # dev_dataset = RetrievalDataset(dev_corpus, dev_queries, dev_mapping)
+#     test_dataset = RetrievalDataset(test_corpus, test_queries, test_mapping)
 
+#     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
+#     # val_loader = DataLoader(dev_dataset, batch_size=test_batch_size)
+#     test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
+#     return train_loader, train_loader, test_loader
 
-def load_scifact(train_batch_size, test_batch_size):
-    dataset = "scifact"
+def load_sick(train_batch_size, test_batch_size):
+    data = datasets.load_dataset("RobZamp/sick")
+    # inspired by wnli - entailment and not entailment
+    # merging neutral (1) and contradiction (2) in single class
 
-    url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(dataset)
-    out_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), "datasets")
-    data_path = beir_util.download_and_unzip(url, out_dir)
+    columns = ["sentence_A", "sentence_B", "label"]
 
-    train_corpus, train_queries, train_mapping = GenericDataLoader(data_folder=data_path).load(split="train")
-    # dev_corpus, dev_queries, dev_mapping = GenericDataLoader(data_folder=data_path).load(split="dev")
-    test_corpus, test_queries, test_mapping = GenericDataLoader(data_folder=data_path).load(split="test")
+    train = data["train"].to_pandas()[columns].values.tolist()
+    val = data["validation"].to_pandas()[columns].values.tolist()
+    test = data["test"].to_pandas()[columns].values.tolist()
 
-    train_dataset = RetrievalDataset(train_corpus, train_queries, train_mapping)
-    # dev_dataset = RetrievalDataset(dev_corpus, dev_queries, dev_mapping)
-    test_dataset = RetrievalDataset(test_corpus, test_queries, test_mapping)
+    train_dataset = BaseDataset(train)
+    val_dataset = BaseDataset(val)
+    test_dataset = BaseDataset(test)
 
     train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
-    # val_loader = DataLoader(dev_dataset, batch_size=test_batch_size)
+    val_loader = DataLoader(val_dataset, batch_size=test_batch_size)
     test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
-    return train_loader, train_loader, test_loader
+    return train_loader, val_loader, test_loader
 
+def load_sick_binary(train_batch_size, test_batch_size):
+    data = datasets.load_dataset("RobZamp/sick")
+    # labels are:
+    # 0 - entailment    -> 1 - entailment    
+    # 1 - neutral       -> 0 - not entailment
+    # 2 - contradiction -> 0 - not entailment
+    def merge_labels(ex):
+        if ex["label"] in [1, 2]:
+            ex["label"] = 1
+        return ex
+
+    def swap_labels(ex):
+        if ex["label"] == 0:
+            ex["label"] = 1
+        elif ex["label"] == 1:
+            ex["label"] = 0
+        return ex
+
+    data = data.map(merge_labels)
+    data = data.map(swap_labels)
+
+    columns = ["sentence_A", "sentence_B", "label"]
+
+    train = data["train"].to_pandas()[columns].values.tolist()
+    val = data["validation"].to_pandas()[columns].values.tolist()
+    test = data["test"].to_pandas()[columns].values.tolist()
+
+    train_dataset = BaseDataset(train)
+    val_dataset = BaseDataset(val)
+    test_dataset = BaseDataset(test)
+
+    train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=test_batch_size)
+    test_loader = DataLoader(test_dataset, batch_size=test_batch_size)
+    return train_loader, val_loader, test_loader
     
 def load_mrpc(train_batch_size, test_batch_size):
     data = datasets.load_dataset("SetFit/mrpc")

@@ -3,12 +3,9 @@ import torch.nn.functional as F
 from src.scripts.pooling_functions import *
 from src.scripts.utils import batch_to_device
 from tqdm import tqdm
-from scipy.stats import pearsonr, spearmanr
 from src.scripts.final_layers import *
 from safetensors.torch import load_file
-from src.scripts.evaluators import STSEvaluator, SentencePairEvaluator
-from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
-import numpy as np
+from src.scripts.evaluators import STSEvaluator, SentencePairEvaluator, NLIEvaluator
 
 class Model(nn.Module):
     def __init__(self, args):
@@ -37,9 +34,13 @@ class Model(nn.Module):
         self.config = AutoConfig.from_pretrained(args.model_name)
 
         final_layer_dict = {
-            "cosine": CosineSimilarity,
+            "cosine": CosineSimilarity(),
+            "diff_concatenation": DifferenceConcatenation(
+                hidden_size=self.config.hidden_size,
+                num_classes=3,
+            ),
         }
-        self.final_layer = final_layer_dict[args.final_layer]()
+        self.final_layer = final_layer_dict[args.final_layer]
         
         if args.pooling_fn == "mean":
             self.pooling_fn = MeanPooling(args.starting_state)
@@ -50,7 +51,8 @@ class Model(nn.Module):
 
         self.dataset = args.dataset
 
-        ## TODO change datasets
+        if self.dataset in ["sick"]:
+            self.evaluator = NLIEvaluator()
         if self.dataset in ["mrpc"]:
             self.evaluator = SentencePairEvaluator()
         elif self.dataset in ["stsb"]:

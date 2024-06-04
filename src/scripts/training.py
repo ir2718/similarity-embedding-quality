@@ -19,7 +19,7 @@ from src.scripts.pooling_functions import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_name", default="google/electra-base-discriminator", type=str)
 parser.add_argument("--pooling_fn", default="mean", type=str) # cls, mean, max
-parser.add_argument("--final_layer", default="cosine", type=str) 
+parser.add_argument("--final_layer", default="cosine", type=str) # cosine, diff_concatenation
 parser.add_argument("--starting_state", default=12, type=int)
 parser.add_argument("--train_batch_size", default=32, type=int)
 parser.add_argument("--test_batch_size", default=64, type=int)
@@ -38,8 +38,18 @@ parser.add_argument("--save_results", action="store_true")
 parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
+# NLI dataset
+if args.dataset == "sick":
+    if args.final_layer == "cosine":
+        loader_f = load_sick_binary
+    elif args.final_layer == "diff_concatenation":
+        loader_f = load_sick
+
+    if args.best_metric_str == "spearman":
+        args.best_metric_str = "f1"
+
 # sentence pair classification dataset
-if args.dataset == "mrpc":
+elif args.dataset == "mrpc":
     loader_f = load_mrpc
     if args.best_metric_str == "spearman":
         args.best_metric_str = "map"
@@ -76,10 +86,12 @@ for seed in range(args.num_seeds):
     
     model = Model(args).to(args.device)
 
-    if args.dataset in ["mrpc"]:
+    if args.dataset in ["mrpc"] or (args.dataset in ["sick"] and args.final_layer == "cosine"):
         loss_f = nn.BCEWithLogitsLoss()
     elif args.dataset in ["stsb"]:
         loss_f = nn.MSELoss()
+    elif args.dataset in ["sick"] and args.final_layer == "diff_concatenation":
+        loss_f = nn.CrossEntropyLoss()
 
     optimizer_grouped_parameters = remove_params_from_optimizer(model, args.weight_decay)
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr)
@@ -101,6 +113,8 @@ for seed in range(args.num_seeds):
             score = score.to(args.device)
 
             out = model.forward(tokenized_device)
+
+            print(out.shape,score.shape, score)
 
             loss = loss_f(out, score)
             loss.backward()
