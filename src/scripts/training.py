@@ -114,8 +114,6 @@ for seed in range(args.num_seeds):
 
             out = model.forward(tokenized_device)
 
-            print(out.shape,score.shape, score)
-
             loss = loss_f(out, score)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)

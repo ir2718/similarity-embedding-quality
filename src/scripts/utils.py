@@ -10,8 +10,6 @@ import os
 import numpy as np
 from tqdm import tqdm
 import pathlib
-import beir.util as beir_util
-from beir.datasets.data_loader import GenericDataLoader
 
 def read_data(path, dataset_f, train_batch_size, test_batch_size, dataset_kwargs={}, sample_f=lambda x: x):
     train_samples = []
