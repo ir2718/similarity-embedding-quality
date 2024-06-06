@@ -100,9 +100,6 @@ class BaseDataset(Dataset):
 
 def load_sick(train_batch_size, test_batch_size):
     data = datasets.load_dataset("RobZamp/sick")
-    # inspired by wnli - entailment and not entailment
-    # merging neutral (1) and contradiction (2) in single class
-
     columns = ["sentence_A", "sentence_B", "label"]
 
     train = data["train"].to_pandas()[columns].values.tolist()
@@ -120,6 +117,9 @@ def load_sick(train_batch_size, test_batch_size):
 
 def load_sick_binary(train_batch_size, test_batch_size):
     data = datasets.load_dataset("RobZamp/sick")
+    # inspired by wnli - entailment and not entailment
+    # merging neutral (1) and contradiction (2) in single class
+    #
     # labels are:
     # 0 - entailment    -> 1 - entailment    
     # 1 - neutral       -> 0 - not entailment
