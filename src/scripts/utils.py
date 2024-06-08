@@ -100,7 +100,19 @@ class BaseDataset(Dataset):
 
 def load_sick(train_batch_size, test_batch_size):
     data = datasets.load_dataset("RobZamp/sick")
-    columns = ["sentence_A", "sentence_B", "label"]
+    label_col = "entailment_AB"
+    columns = ["sentence_A", "sentence_B", label_col]
+
+    map_dict = {
+        "A_entails_B": 0,
+        "A_neutral_B": 1,
+        "A_contradicts_B": 2,
+    }
+    def map_labels_to_int(ex):
+        ex[label_col] = map_dict[ex[label_col]]
+        return ex
+
+    data = data.map(map_labels_to_int)
 
     train = data["train"].to_pandas()[columns].values.tolist()
     val = data["validation"].to_pandas()[columns].values.tolist()

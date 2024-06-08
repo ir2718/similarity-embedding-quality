@@ -52,7 +52,7 @@ if args.dataset == "sick":
 elif args.dataset == "mrpc":
     loader_f = load_mrpc
     if args.best_metric_str == "spearman":
-        args.best_metric_str = "map"
+        args.best_metric_str = "f1"
 
 # STS datasets
 elif args.dataset == "stsb":

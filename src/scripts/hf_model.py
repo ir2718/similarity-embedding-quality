@@ -54,7 +54,8 @@ class Model(nn.Module):
         if self.dataset in ["sick"]:
             self.evaluator = NLIEvaluator()
         if self.dataset in ["mrpc"]:
-            self.evaluator = SentencePairEvaluator()
+            self.evaluator = NLIEvaluator()
+            # self.evaluator = SentencePairEvaluator()
         elif self.dataset in ["stsb"]:
             self.evaluator = STSEvaluator()
 
