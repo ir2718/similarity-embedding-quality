@@ -32,6 +32,8 @@ class Model(nn.Module):
                     pass
 
         self.config = AutoConfig.from_pretrained(args.model_name)
+        if args.random_init:
+            self.model = AutoModel.from_config(self.config)
 
         final_layer_dict = {
             "cosine": CosineSimilarity(),

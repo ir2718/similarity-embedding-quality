@@ -35,6 +35,7 @@ parser.add_argument("--model_load_path", default=None, type=str)
 parser.add_argument("--model_save_path", default="output", type=str)
 parser.add_argument("--save_model", action="store_true")
 parser.add_argument("--save_results", action="store_true")
+parser.add_argument("--random_init", action="store_true")
 parser.add_argument("--device", default="cuda:0", type=str)
 args = parser.parse_args()
 
@@ -173,6 +174,7 @@ if args.save_results:
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             (path_to_add if args.model_load_path is not None else "") +
+            ("_random" if args.random_init else "") + 
             f"_{args.dataset}.json"
         )
     with open(json_res_path_test, "w") as f:
@@ -186,6 +188,7 @@ if args.save_results:
             (f"_{args.dataset}" if args.dataset != "stsb" else "") + 
             (f"_{args.final_layer}" if args.final_layer != "cosine" else "") + 
             (path_to_add if args.model_load_path is not None else "") +
+            ("_random" if args.random_init else "") + 
             f"_{args.dataset}.json"
         )
     with open(json_res_path_val, "w") as f:
