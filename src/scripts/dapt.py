@@ -119,7 +119,14 @@ for e in range(args.num_epochs):
         # labels are N, seq_len
         lm_out = lm_head(out) # N, seq_len, vocab_size
 
-        loss = F.cross_entropy(lm_out.view(-1, tokenizer.vocab_size), labels.view(-1), ignore_index=-100)
+        # deberta authors left 100 tokens extra in the vocab
+        # https://github.com/huggingface/transformers/issues/12428
+        to_add = 100 if args.model_name == "microsoft/deberta-v3-base" else 0
+        loss = F.cross_entropy(
+            lm_out.view(-1, tokenizer.vocab_size + to_add), 
+            labels.view(-1), 
+            ignore_index=-100
+        )
             
         loss = loss / args.grad_accumulation_steps
         loss.backward()

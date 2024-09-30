@@ -58,7 +58,7 @@ class Model(nn.Module):
         if self.dataset in ["mrpc"]:
             self.evaluator = NLIEvaluator()
             # self.evaluator = SentencePairEvaluator()
-        elif self.dataset in ["stsb"]:
+        elif self.dataset in ["stsb", "kor_sts", "spanish_sts", "german_sts"]:
             self.evaluator = STSEvaluator()
 
     def forward_once(self, inputs):

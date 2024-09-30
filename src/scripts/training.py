@@ -89,7 +89,7 @@ for seed in range(args.num_seeds):
 
     if args.dataset in ["mrpc"] or (args.dataset in ["sick"] and args.final_layer == "cosine"):
         loss_f = nn.BCEWithLogitsLoss()
-    elif args.dataset in ["stsb"]:
+    elif args.dataset in ["stsb", "kor_sts", "spanish_sts", "german_sts"]:
         loss_f = nn.MSELoss()
     elif args.dataset in ["sick"] and args.final_layer == "diff_concatenation":
         loss_f = nn.CrossEntropyLoss()
