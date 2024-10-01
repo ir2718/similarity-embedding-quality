@@ -31,13 +31,13 @@ chmod +x scripts/run_translated_stsb_experiments.sh
 chmod +x scripts/run_wordsim.sh
 ```
 
-## STSB Various sizes
+## STSB Various Sizes
 For reproducing the results on STSB for various model sizes:
 ```
 ./scripts/run_stsb_experiments.sh
 ```
 
-## STSB With Improvements
+## STSB with Improvements
 For reproducing the results on STSB with improvements:
 ```
 ./scripts/run_dapt.sh
