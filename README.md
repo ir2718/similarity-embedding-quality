@@ -13,14 +13,12 @@ source similarity_venv/bin/activate
 pip3 install -r requirements.txt
 ```
 
-- TODO: add requirements
-- TODO: add dataset download scripts
-
 # Reproducing Results
 
 To reproduce the paper results, scripts are provided in the `scripts` folder:
 
 ```
+chmod +x scripts/get_data.sh
 chmod +x scripts/run_dapt.sh
 chmod +x scripts/run_mrpc_experiments.sh
 chmod +x scripts/run_random_stsb_experiments.sh
@@ -31,15 +29,21 @@ chmod +x scripts/run_translated_stsb_experiments.sh
 chmod +x scripts/run_wordsim.sh
 ```
 
-## STSB Various Sizes
+Get the word similarity data and the Korean dataset:
+```
+./scripts/get_data.sh
+```
+
+## STSB Various sizes
 For reproducing the results on STSB for various model sizes:
 ```
 ./scripts/run_stsb_experiments.sh
 ```
 
-## STSB with Improvements
+## STSB With Improvements
 For reproducing the results on STSB with improvements:
 ```
+python3 src/scripts/preprocess_word_sim_data.py
 ./scripts/run_dapt.sh
 ./scripts/run_wordsim.sh
 ./scripts/run_stsb_improvements.sh
