@@ -1,8 +1,6 @@
-<p align="center" style="font-size:3.5vw">
-    <strong>
+<h1 align="center">
     Are ELECTRA's Sentence Embeddings Beyond Repair? The Case of Semantic Textual Similarity
-    </strong>
-</p>
+</h1>
 <p align="center">
     <img centered=true src=".assets/truncate_logo_hf_transparent.png" width=300px>
 </p>
