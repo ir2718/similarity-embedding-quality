@@ -2,7 +2,7 @@
     Are ELECTRA's Sentence Embeddings Beyond Repair? The Case of Semantic Textual Similarity
 </h1>
 <p align="center">
-    <img centered=true src=".assets/truncate_logo_hf_transparent.png" width=300px>
+    <img centered=true src=".assets/truncate_logo_hf_dark_cropped.png" width=300px>
 </p>
 
 Code for the paper [Are ELECTRA's Sentence Embeddings Beyond Repair? The Case of Semantic Textual Similarity](https://arxiv.org/abs/2402.13130) accepted at EMNLP 2024 Findings.
