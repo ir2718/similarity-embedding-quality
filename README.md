@@ -1,4 +1,3 @@
-
 <h1 align="center">
     Are ELECTRA's Sentence Embeddings Beyond Repair? The Case of Semantic Textual Similarity
 </h1>
